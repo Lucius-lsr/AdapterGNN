@@ -143,7 +143,7 @@ def main(runseed):
     parser.add_argument('--JK', type=str, default="last",
                         help='how the node features across layers are combined. last, sum, max or concat')
     parser.add_argument('--gnn_type', type=str, default="gin")
-    parser.add_argument('--dataset', type=str, default='clintox',
+    parser.add_argument('--dataset', type=str, default='bace',
                         help='root directory of dataset. For now, only classification.')
     parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth',
                         help='filename to read the model (if there is any)')
@@ -154,8 +154,11 @@ def main(runseed):
     parser.add_argument('--runseed', type=int, default=runseed,
                         help="Seed for minibatch selection, random initialization.")
     parser.add_argument('--split', type=str, default="scaffold", help="random or scaffold or random_scaffold")
-    parser.add_argument('--eval_train', type=int, default=1, help='evaluating training or not')
+    parser.add_argument('--eval_train', type=int, default=0, help='evaluating training or not')
     parser.add_argument('--num_workers', type=int, default=4, help='number of workers for dataset loading')
+
+    parser.add_argument('--setting', type=int, default=0)
+
     args = parser.parse_args()
 
     torch.manual_seed(args.runseed)
@@ -251,9 +254,9 @@ def main(runseed):
 
         # set up model
         model = GNN_graphpred_gp(args.num_layer, args.emb_dim, JK=args.JK, drop_ratio=args.dropout_ratio,
-                                 graph_pooling=args.graph_pooling, gnn_type=args.gnn_type)
-        # if not args.input_model_file == "":
-        #     model.from_pretrained(args.input_model_file)
+                                 graph_pooling=args.graph_pooling, gnn_type=args.gnn_type, setting=args.setting)
+        if not args.input_model_file == "":
+            model.from_pretrained(args.input_model_file)
 
         model = model.to(device)
 
@@ -261,7 +264,7 @@ def main(runseed):
         # different learning rate for different part of GNN
         model_param_group = []
         # model_param_group.append({"params": model.gnn.parameters()})
-        model_param_group.append({"params": model.gnn.sequential_prompt.parameters()})
+        model_param_group.append({"params": model.gnn.prompt.parameters()})
         # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr * 10})
         # model_param_group.append({"params": model.gnn.parallel_prompt.parameters()})
 

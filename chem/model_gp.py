@@ -37,6 +37,10 @@ class GINConv(MessagePassing):
         torch.nn.init.xavier_uniform_(self.edge_embedding2.weight.data)
 
         self.aggr_x = None
+        self.modify = -1
+        self.x = None
+        self.gating = 0
+        self.prompt = None
 
     def forward(self, x, edge_index, edge_attr):
         # add self loops in the edge space
@@ -50,6 +54,7 @@ class GINConv(MessagePassing):
 
         edge_embeddings = self.edge_embedding1(edge_attr[:, 0]) + self.edge_embedding2(edge_attr[:, 1])
 
+        self.x = x
         return self.propagate(edge_index[0], x=x, edge_attr=edge_embeddings), self.aggr_x
 
     def message(self, x_j, edge_attr):
@@ -57,11 +62,14 @@ class GINConv(MessagePassing):
 
     def update(self, aggr_out):
         self.aggr_x = aggr_out
-        # aggr_out = self.modify_aggr_out(aggr_out)
+        if self.modify == 1:
+            aggr_out = self.modify_aggr_out(aggr_out, aggr_out)
+        elif self.modify == 0:
+            aggr_out = self.modify_aggr_out(aggr_out, self.x)
         return self.mlp(aggr_out)
 
-    def modify_aggr_out(self, aggr_out):
-        return aggr_out * (1 - self.gating) + self.prompt(aggr_out) * self.gating
+    def modify_aggr_out(self, aggr_out, delta):
+        return aggr_out * (1 - self.gating) + self.prompt(delta) * self.gating
 
     def set_prompt(self, prompt, gating):
         self.prompt = prompt
@@ -230,7 +238,7 @@ class GNN_gp(torch.nn.Module):
 
     """
 
-    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, gnn_type="gin"):
+    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, gnn_type="gin", setting=0):
         super(GNN_gp, self).__init__()
         self.num_layer = num_layer
         self.drop_ratio = drop_ratio
@@ -258,33 +266,38 @@ class GNN_gp(torch.nn.Module):
                 self.gnns.append(GraphSAGEConv(emb_dim))
 
         bottleneck_dim = 30
-        # prompt_dropout = 0.5
-        # self.l1 = 1  # 1 0.9 0.5 0.1 0
-        # self.l2 = 0
-        # print('l1, l2: ', self.l1, self.l2)
         self.gating_parameter = torch.nn.Parameter(torch.zeros(1))
         self.gating_parameter.data += 0
         self.register_parameter('gating_parameter', self.gating_parameter)
 
+        # ----------------------------------parameter-----------------------------------
+        self.gating = 0.9
+
+        connect_list = ['00', '00', '01', '11', '02', '12', '03', '13', '55', '55']
+        bn_list = [True, False, False, False, False, False, True, True, True, False]
+        self.connect = connect_list[setting]
+        self.with_bn = bn_list[setting]
+        print(self.connect, self.with_bn)
+
         self.batch_norms = torch.nn.ModuleList()
-        self.sequential_prompt = torch.nn.ModuleList()
-        # self.parallel_prompt = torch.nn.ModuleList()
+        self.prompt = torch.nn.ModuleList()
+
         for layer in range(num_layer):
             self.batch_norms.append(torch.nn.BatchNorm1d(emb_dim))
-            self.sequential_prompt.append(torch.nn.Sequential(
-                torch.nn.Linear(emb_dim, bottleneck_dim),
-                torch.nn.ReLU(),
-                torch.nn.Linear(bottleneck_dim, emb_dim),
-                torch.nn.BatchNorm1d(emb_dim)
-            ))
-            # self.parallel_prompt.append(torch.nn.Sequential(
-            #     torch.nn.Linear(emb_dim, bottleneck_dim),
-            #     torch.nn.ReLU(),
-            #     torch.nn.Linear(bottleneck_dim, emb_dim),
-            #     torch.nn.BatchNorm1d(emb_dim)
-            # ))
+            if self.with_bn:
+                self.prompt.append(torch.nn.Sequential(
+                    torch.nn.Linear(emb_dim, bottleneck_dim),
+                    torch.nn.ReLU(),
+                    torch.nn.Linear(bottleneck_dim, emb_dim),
+                    torch.nn.BatchNorm1d(emb_dim)
+                ))
+            else:
+                self.prompt.append(torch.nn.Sequential(
+                    torch.nn.Linear(emb_dim, bottleneck_dim),
+                    torch.nn.ReLU(),
+                    torch.nn.Linear(bottleneck_dim, emb_dim),
+                ))
 
-    # def forward(self, x, edge_index, edge_attr):
     def forward(self, *argv):
         if len(argv) == 3:
             x, edge_index, edge_attr = argv[0], argv[1], argv[2]
@@ -296,31 +309,40 @@ class GNN_gp(torch.nn.Module):
 
         x = self.x_embedding1(x[:, 0]) + self.x_embedding2(x[:, 1])
 
-        gating = 0.1
+        connect, gating = self.connect, self.gating
         h_list = [x]
         for layer in range(self.num_layer):
             h = h_list[layer]
 
-            # self.gnns[layer].set_prompt(self.sequential_prompt[layer], gating)
+            if connect == '00':
+                h = h * (1 - gating) + self.prompt[layer](h_list[layer]) * gating
+            if connect == '01':
+                self.gnns[layer].modify = 0
+                self.gnns[layer].set_prompt(self.prompt[layer], gating)
+            if connect == '11':
+                self.gnns[layer].modify = 1
+                self.gnns[layer].set_prompt(self.prompt[layer], gating)
 
             h, x_aggr = self.gnns[layer](h, edge_index, edge_attr)
+
+            if connect == '02':
+                h = h * (1 - gating) + self.prompt[layer](h_list[layer]) * gating
+            if connect == '12':
+                h = h * (1 - gating) + self.prompt[layer](x_aggr) * gating
+
             h = self.batch_norms[layer](h)
 
-            # par
-            # h = h * (1 - self.l1) + self.sequential_prompt[layer](h_list[layer]) * self.l1
-            # h = h + self.sequential_prompt[layer](h_list[layer]) * self.l1
-            # gating = torch.sigmoid(self.gating_parameter)
-
-            # h = h * (1 - gating) + self.sequential_prompt[layer](x_aggr) * gating
-            h = h * (1 - gating) + self.sequential_prompt[layer](h_list[layer]) * gating
+            if connect == '03':
+                h = h * (1 - gating) + self.prompt[layer](h_list[layer]) * gating
+            if connect == '13':
+                h = h * (1 - gating) + self.prompt[layer](x_aggr) * gating
 
             if layer < self.num_layer - 1:
                 h = F.relu(h)
             h = F.dropout(h, self.drop_ratio, training=self.training)
 
-            # seq
-            # h = h * (1 - self.l1) + self.sequential_prompt[layer](h) * self.l1
-            # h = h + self.sequential_prompt[layer](h) * self.l1
+            if connect == '55':
+                h = h * (1 - gating) + self.prompt[layer](h) * gating
 
             h_list.append(h)
 
@@ -356,7 +378,7 @@ class GNN_graphpred_gp(torch.nn.Module):
     JK-net: https://arxiv.org/abs/1806.03536
     """
 
-    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, graph_pooling="mean", gnn_type="gin"):
+    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, graph_pooling="mean", gnn_type="gin", setting=0):
         super(GNN_graphpred_gp, self).__init__()
         self.num_layer = num_layer
         self.drop_ratio = drop_ratio
@@ -367,7 +389,7 @@ class GNN_graphpred_gp(torch.nn.Module):
         if self.num_layer < 2:
             raise ValueError("Number of GNN layers must be greater than 1.")
 
-        self.gnn = GNN_gp(num_layer, emb_dim, JK, drop_ratio, gnn_type=gnn_type)
+        self.gnn = GNN_gp(num_layer, emb_dim, JK, drop_ratio, gnn_type=gnn_type, setting=setting)
 
         # Different kind of graph pooling
         if graph_pooling == "sum":
