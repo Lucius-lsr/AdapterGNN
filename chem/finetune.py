@@ -66,6 +66,7 @@ def eval(args, target, model, device, loader):
     y_scores = []
 
     # for step, batch in enumerate(tqdm(loader, desc="Iteration")):
+    loss_list = []
     for step, batch in enumerate(loader):
         batch = batch.to(device)
 
@@ -81,6 +82,9 @@ def eval(args, target, model, device, loader):
             y = batch.y[:, target].flatten()
         else:
             y = batch.y[target].flatten()
+
+        loss = criterion(pred, y)
+        loss_list.append(loss.item())
 
         if device == 'cpu':
             y_true.extend(y.numpy())
@@ -107,7 +111,7 @@ def eval(args, target, model, device, loader):
 
     y_true = np.array(y_true)
     y_scores = np.array(y_scores)
-    return roc_auc_score(y_true, y_scores[:, 1])
+    return roc_auc_score(y_true, y_scores[:, 1]), sum(loss_list) / len(loss_list)
 
 
 def main(runseed):
@@ -117,7 +121,7 @@ def main(runseed):
                         help='which gpu to use if any (default: 0)')
     parser.add_argument('--batch_size', type=int, default=32,
                         help='input batch size for training (default: 32)')
-    parser.add_argument('--epochs', type=int, default=100,
+    parser.add_argument('--epochs', type=int, default=300,
                         help='number of epochs to train (default: 100)')
     parser.add_argument('--lr', type=float, default=0.001,
                         help='learning rate (default: 0.001)')
@@ -136,7 +140,7 @@ def main(runseed):
     parser.add_argument('--JK', type=str, default="last",
                         help='how the node features across layers are combined. last, sum, max or concat')
     parser.add_argument('--gnn_type', type=str, default="gin")
-    parser.add_argument('--dataset', type=str, default='clintox',
+    parser.add_argument('--dataset', type=str, default='hiv',
                         help='root directory of dataset. For now, only classification.')
     parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth',
                         help='filename to read the model (if there is any)')
@@ -210,6 +214,7 @@ def main(runseed):
     dataset = MoleculeDataset("dataset/" + args.dataset, dataset=args.dataset)
 
     assoc_test_acc_list = []
+    ave_loss_gap = 0
     for target in range(len(target_list)):
         if args.split == "scaffold":
             smiles_list = pd.read_csv('dataset/' + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
@@ -243,8 +248,8 @@ def main(runseed):
         # set up model
         model = GNN_graphpred(args.num_layer, args.emb_dim, JK=args.JK, drop_ratio=args.dropout_ratio,
                               graph_pooling=args.graph_pooling, gnn_type=args.gnn_type)
-        if not args.input_model_file == "":
-            model.from_pretrained(args.input_model_file)
+        # if not args.input_model_file == "":
+        #     model.from_pretrained(args.input_model_file)
 
         model.to(device)
 
@@ -274,14 +279,17 @@ def main(runseed):
 
             # print("====Evaluation")
             if args.eval_train:
-                train_acc = eval(args, target, model, device, train_loader)
+                train_acc, train_loss = eval(args, target, model, device, train_loader)
             else:
                 #    print("omit the training accuracy computation")
                 train_acc = 0
-            val_acc = eval(args, target, model, device, val_loader)
-            test_acc = eval(args, target, model, device, test_loader)
+            val_acc, val_loss = eval(args, target, model, device, val_loader)
+            test_acc, test_loss = eval(args, target, model, device, test_loader)
 
-            print("train: %f val: %f test: %f" %(train_acc, val_acc, test_acc))
+            # print("train: %f val: %f test: %f" %(train_acc, val_acc, test_acc))
+            print("train: %f val: %f test: %f" % (train_loss, val_loss, test_loss))
+            if epoch > args.epochs - 50:
+                ave_loss_gap += test_loss - train_loss
 
             if val_acc > best_val_acc:
                 assoc_train_acc = train_acc
@@ -296,12 +304,14 @@ def main(runseed):
 
         print("assoc train: %f best val: %f assoc test: %f" % (assoc_train_acc, best_val_acc, assoc_test_acc))
         assoc_test_acc_list.append(assoc_test_acc)
+    print(ave_loss_gap/50)
+
     return assoc_test_acc_list
 
 
 if __name__ == "__main__":
     total_acc = []
-    for runseed in range(10):
+    for runseed in range(1):
         accs = main(runseed)
         total_acc += accs
     print('Average acc:{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc),
