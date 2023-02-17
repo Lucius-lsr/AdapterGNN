@@ -143,7 +143,7 @@ def main(runseed):
     parser.add_argument('--JK', type=str, default="last",
                         help='how the node features across layers are combined. last, sum, max or concat')
     parser.add_argument('--gnn_type', type=str, default="gin")
-    parser.add_argument('--dataset', type=str, default='bace',
+    parser.add_argument('--dataset', type=str, default='bbbp',
                         help='root directory of dataset. For now, only classification.')
     parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth',
                         help='filename to read the model (if there is any)')
@@ -158,6 +158,7 @@ def main(runseed):
     parser.add_argument('--num_workers', type=int, default=4, help='number of workers for dataset loading')
 
     parser.add_argument('--setting', type=int, default=0)
+    parser.add_argument('--gating', type=float, default=0.0)
 
     args = parser.parse_args()
 
@@ -254,7 +255,8 @@ def main(runseed):
 
         # set up model
         model = GNN_graphpred_gp(args.num_layer, args.emb_dim, JK=args.JK, drop_ratio=args.dropout_ratio,
-                                 graph_pooling=args.graph_pooling, gnn_type=args.gnn_type, setting=args.setting)
+                                 graph_pooling=args.graph_pooling, gnn_type=args.gnn_type, setting=args.setting,
+                                 gating=args.gating)
         if not args.input_model_file == "":
             model.from_pretrained(args.input_model_file)
 
@@ -299,7 +301,7 @@ def main(runseed):
             val_acc = eval(args, target, model, device, val_loader)
             test_acc = eval(args, target, model, device, test_loader)
 
-            print("train: %f val: %f test: %f" % (train_acc, val_acc, test_acc))
+            # print("train: %f val: %f test: %f" % (train_acc, val_acc, test_acc))
             # for sp in model.gnn.sequential_prompt:
             #     print(round(list(sp.parameters())[0].abs().mean().item(), 4), end=' ')
             #     print(round(list(sp.parameters())[2].abs().mean().item(), 4), end=' ')
@@ -316,7 +318,7 @@ def main(runseed):
 
             # print("")
 
-        print("assoc train: %f best val: %f assoc test: %f" % (assoc_train_acc, best_val_acc, assoc_test_acc))
+        # print("assoc train: %f best val: %f assoc test: %f" % (assoc_train_acc, best_val_acc, assoc_test_acc))
         assoc_test_acc_list.append(assoc_test_acc)
     return assoc_test_acc_list
 
@@ -326,4 +328,4 @@ if __name__ == "__main__":
     for runseed in range(10):
         accs = main(runseed)
         total_acc += accs
-    print('Average acc:{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc), 100 * statistics.pstdev(total_acc)))
+    print('{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc), 100 * statistics.pstdev(total_acc)))

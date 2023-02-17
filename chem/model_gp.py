@@ -238,7 +238,7 @@ class GNN_gp(torch.nn.Module):
 
     """
 
-    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, gnn_type="gin", setting=0):
+    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, gnn_type="gin", setting=0, gating=0):
         super(GNN_gp, self).__init__()
         self.num_layer = num_layer
         self.drop_ratio = drop_ratio
@@ -271,13 +271,13 @@ class GNN_gp(torch.nn.Module):
         self.register_parameter('gating_parameter', self.gating_parameter)
 
         # ----------------------------------parameter-----------------------------------
-        self.gating = 0.9
+        self.gating = gating
 
         connect_list = ['00', '00', '01', '11', '02', '12', '03', '13', '55', '55']
         bn_list = [True, False, False, False, False, False, True, True, True, False]
         self.connect = connect_list[setting]
         self.with_bn = bn_list[setting]
-        print(self.connect, self.with_bn)
+        # print(self.connect, self.with_bn)
 
         self.batch_norms = torch.nn.ModuleList()
         self.prompt = torch.nn.ModuleList()
@@ -378,7 +378,8 @@ class GNN_graphpred_gp(torch.nn.Module):
     JK-net: https://arxiv.org/abs/1806.03536
     """
 
-    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, graph_pooling="mean", gnn_type="gin", setting=0):
+    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, graph_pooling="mean", gnn_type="gin", setting=0,
+                 gating=0):
         super(GNN_graphpred_gp, self).__init__()
         self.num_layer = num_layer
         self.drop_ratio = drop_ratio
@@ -389,7 +390,7 @@ class GNN_graphpred_gp(torch.nn.Module):
         if self.num_layer < 2:
             raise ValueError("Number of GNN layers must be greater than 1.")
 
-        self.gnn = GNN_gp(num_layer, emb_dim, JK, drop_ratio, gnn_type=gnn_type, setting=setting)
+        self.gnn = GNN_gp(num_layer, emb_dim, JK, drop_ratio, gnn_type=gnn_type, setting=setting, gating=gating)
 
         # Different kind of graph pooling
         if graph_pooling == "sum":
