@@ -145,10 +145,10 @@ def main(runseed):
     parser.add_argument('--gnn_type', type=str, default="gin")
     parser.add_argument('--dataset', type=str, default='bbbp',
                         help='root directory of dataset. For now, only classification.')
-    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth',
-                        help='filename to read the model (if there is any)')
-    # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth',
+    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth',
     #                     help='filename to read the model (if there is any)')
+    parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth',
+                        help='filename to read the model (if there is any)')
     parser.add_argument('--filename', type=str, default='', help='output filename')
     parser.add_argument('--seed', type=int, default=42, help="Seed for splitting the dataset.")
     parser.add_argument('--runseed', type=int, default=runseed,

@@ -40,6 +40,7 @@ class GINConv(MessagePassing):
         self.modify = -1
         self.x = None
         self.gating = 0
+        self.gating_m = 0
         self.prompt = None
 
     def forward(self, x, edge_index, edge_attr):
@@ -69,11 +70,12 @@ class GINConv(MessagePassing):
         return self.mlp(aggr_out)
 
     def modify_aggr_out(self, aggr_out, delta):
-        return aggr_out * (1 - self.gating) + self.prompt(delta) * self.gating
+        return aggr_out * (1 - self.gating_m) + self.prompt(delta) * self.gating
 
-    def set_prompt(self, prompt, gating):
+    def set_prompt(self, prompt, gating, gating_m):
         self.prompt = prompt
         self.gating = gating
+        self.gating_m = gating_m
 
 
 class GCNConv(MessagePassing):
@@ -272,12 +274,12 @@ class GNN_gp(torch.nn.Module):
 
         # ----------------------------------parameter-----------------------------------
         self.gating = gating
+        self.gating_m = gating
 
-        connect_list = ['00', '00', '01', '11', '02', '12', '03', '13', '55', '55']
-        bn_list = [True, False, False, False, False, False, True, True, True, False]
+        connect_list = ['00', '00', '02', '12', '03', '13', '55']
+        bn_list = [True, False, False, False, True, True, True]
         self.connect = connect_list[setting]
         self.with_bn = bn_list[setting]
-        # print(self.connect, self.with_bn)
 
         self.batch_norms = torch.nn.ModuleList()
         self.prompt = torch.nn.ModuleList()
@@ -297,6 +299,9 @@ class GNN_gp(torch.nn.Module):
                     torch.nn.ReLU(),
                     torch.nn.Linear(bottleneck_dim, emb_dim),
                 ))
+            if self.gating_m == 0:
+                torch.nn.init.zeros_(self.prompt[-1][2].weight.data)
+                torch.nn.init.zeros_(self.prompt[-1][2].bias.data)
 
     def forward(self, *argv):
         if len(argv) == 3:
@@ -309,40 +314,40 @@ class GNN_gp(torch.nn.Module):
 
         x = self.x_embedding1(x[:, 0]) + self.x_embedding2(x[:, 1])
 
-        connect, gating = self.connect, self.gating
+        connect, gating, gating_m = self.connect, self.gating, self.gating_m
         h_list = [x]
         for layer in range(self.num_layer):
             h = h_list[layer]
 
             if connect == '00':
-                h = h * (1 - gating) + self.prompt[layer](h_list[layer]) * gating
+                h = h * (1 - gating_m) + self.prompt[layer](h_list[layer]) * gating
             if connect == '01':
                 self.gnns[layer].modify = 0
-                self.gnns[layer].set_prompt(self.prompt[layer], gating)
+                self.gnns[layer].set_prompt(self.prompt[layer], gating, gating_m)
             if connect == '11':
                 self.gnns[layer].modify = 1
-                self.gnns[layer].set_prompt(self.prompt[layer], gating)
+                self.gnns[layer].set_prompt(self.prompt[layer], gating, gating_m)
 
             h, x_aggr = self.gnns[layer](h, edge_index, edge_attr)
 
             if connect == '02':
-                h = h * (1 - gating) + self.prompt[layer](h_list[layer]) * gating
+                h = h * (1 - gating_m) + self.prompt[layer](h_list[layer]) * gating
             if connect == '12':
-                h = h * (1 - gating) + self.prompt[layer](x_aggr) * gating
+                h = h * (1 - gating_m) + self.prompt[layer](x_aggr) * gating
 
             h = self.batch_norms[layer](h)
 
             if connect == '03':
-                h = h * (1 - gating) + self.prompt[layer](h_list[layer]) * gating
+                h = h * (1 - gating_m) + self.prompt[layer](h_list[layer]) * gating
             if connect == '13':
-                h = h * (1 - gating) + self.prompt[layer](x_aggr) * gating
+                h = h * (1 - gating_m) + self.prompt[layer](x_aggr) * gating
 
             if layer < self.num_layer - 1:
                 h = F.relu(h)
             h = F.dropout(h, self.drop_ratio, training=self.training)
 
             if connect == '55':
-                h = h * (1 - gating) + self.prompt[layer](h) * gating
+                h = h * (1 - gating_m) + self.prompt[layer](h) * gating
 
             h_list.append(h)
 
