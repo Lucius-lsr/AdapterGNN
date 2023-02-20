@@ -143,7 +143,7 @@ def main(runseed):
     parser.add_argument('--JK', type=str, default="last",
                         help='how the node features across layers are combined. last, sum, max or concat')
     parser.add_argument('--gnn_type', type=str, default="gin")
-    parser.add_argument('--dataset', type=str, default='clintox',
+    parser.add_argument('--dataset', type=str, default='bace',
                         help='root directory of dataset. For now, only classification.')
     parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth',
                         help='filename to read the model (if there is any)')
@@ -269,12 +269,12 @@ def main(runseed):
         model_param_group.append({"params": model.gnn.prompt.parameters()})
 
         # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr * 10})
-        # model_param_group.append({"params": model.gnn.parallel_prompt.parameters()})
-        # for name, p in model.gnn.named_parameters():
-        #     if name.startswith('batch_norms'):
-        #         model_param_group.append({"params": p})
-        #     elif not name.startswith('prompt') and name.endswith('bias'):
-        #         model_param_group.append({"params": p})
+
+        for name, p in model.gnn.named_parameters():
+            if name.startswith('batch_norms'):
+                model_param_group.append({"params": p})
+            elif not name.startswith('prompt') and name.endswith('bias'):
+                model_param_group.append({"params": p})
 
         if args.graph_pooling == "attention":
             model_param_group.append({"params": model.pool.parameters(), "lr": args.lr * args.lr_scale})

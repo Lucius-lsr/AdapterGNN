@@ -240,7 +240,7 @@ class GNN_gp(torch.nn.Module):
 
     """
 
-    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, gnn_type="gin", setting=0, gating=0):
+    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, gnn_type="gin", setting=0, gating=0, gating_m=0):
         super(GNN_gp, self).__init__()
         self.num_layer = num_layer
         self.drop_ratio = drop_ratio
@@ -274,7 +274,7 @@ class GNN_gp(torch.nn.Module):
 
         # ----------------------------------parameter-----------------------------------
         self.gating = gating
-        self.gating_m = gating
+        self.gating_m = gating_m
 
         connect_list = ['00', '00', '02', '12', '03', '13', '55']
         bn_list = [True, False, False, False, True, True, True]
@@ -384,7 +384,7 @@ class GNN_graphpred_gp(torch.nn.Module):
     """
 
     def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, graph_pooling="mean", gnn_type="gin", setting=0,
-                 gating=0):
+                 gating=0, gating_m=0):
         super(GNN_graphpred_gp, self).__init__()
         self.num_layer = num_layer
         self.drop_ratio = drop_ratio
@@ -395,7 +395,8 @@ class GNN_graphpred_gp(torch.nn.Module):
         if self.num_layer < 2:
             raise ValueError("Number of GNN layers must be greater than 1.")
 
-        self.gnn = GNN_gp(num_layer, emb_dim, JK, drop_ratio, gnn_type=gnn_type, setting=setting, gating=gating)
+        self.gnn = GNN_gp(num_layer, emb_dim, JK, drop_ratio, gnn_type=gnn_type, setting=setting, gating=gating,
+                          gating_m=gating_m)
 
         # Different kind of graph pooling
         if graph_pooling == "sum":

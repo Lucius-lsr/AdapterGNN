@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="26bd9f31-6cdf-40c0-9333-5aea50926fe5" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/chem/finetune_gp_tmp.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/chem/finetune_gp_tmp.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chem/finetune_gp.py" beforeDir="false" afterPath="$PROJECT_DIR$/chem/finetune_gp.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chem/finetune_gp.sh" beforeDir="false" afterPath="$PROJECT_DIR$/chem/finetune_gp.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chem/model_gp.py" beforeDir="false" afterPath="$PROJECT_DIR$/chem/model_gp.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitSEFilterConfiguration">
+    <file-type-list>
+      <filtered-out-file-type name="LOCAL_BRANCH" />
+      <filtered-out-file-type name="REMOTE_BRANCH" />
+      <filtered-out-file-type name="TAG" />
+      <filtered-out-file-type name="COMMIT_BY_MESSAGE" />
+    </file-type-list>
+  </component>
+  <component name="ProjectId" id="2Kw8DT3om5U55ahZSyEegAZrvP1" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
+    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
+    <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/chem" />
+    <property name="node.js.detected.package.eslint" value="true" />
+    <property name="node.js.detected.package.tslint" value="true" />
+    <property name="node.js.path.for.package.eslint" value="project" />
+    <property name="node.js.path.for.package.tslint" value="project" />
+    <property name="node.js.selected.package.eslint" value="(autodetect)" />
+    <property name="node.js.selected.package.tslint" value="(autodetect)" />
+    <property name="nodejs_interpreter_path.stuck_in_default_project" value="undefined stuck path" />
+    <property name="nodejs_npm_path_reset_for_default_project" value="true" />
+    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
+    <property name="vue.rearranger.settings.migration" value="true" />
+  </component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/chem" />
+    </key>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="26bd9f31-6cdf-40c0-9333-5aea50926fe5" name="Default Changelist" comment="" />
+      <created>1674874164749</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1674874164749</updated>
+      <workItem from="1674874165961" duration="31340000" />
+      <workItem from="1675060353930" duration="46446000" />
+      <workItem from="1675400492735" duration="24495000" />
+      <workItem from="1675668382604" duration="42222000" />
+      <workItem from="1676093779323" duration="249000" />
+      <workItem from="1676094130349" duration="18000" />
+      <workItem from="1676094165585" duration="378000" />
+      <workItem from="1676094839265" duration="26000" />
+      <workItem from="1676102641728" duration="16880000" />
+      <workItem from="1676381039247" duration="678000" />
+      <workItem from="1676516820100" duration="4965000" />
+      <workItem from="1676730525995" duration="4807000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+    <option name="oldMeFiltersMigrated" value="true" />
+  </component>
+</project>
