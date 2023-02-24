@@ -145,11 +145,11 @@ def main(runseed, gating):
                         help='how the node features across layers are combined. last, sum, max or concat')
     parser.add_argument('--gnn_type', type=str, default="gin")
 
-    parser.add_argument('--dataset', type=str, default='bace')
-    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+    # parser.add_argument('--dataset', type=str, default='bace')
+    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
 
-    # parser.add_argument('--dataset', type=str, default='bbbp')
-    # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
+    parser.add_argument('--dataset', type=str, default='bbbp')
+    parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
 
     # parser.add_argument('--dataset', type=str, default='clintox')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
@@ -314,7 +314,7 @@ def main(runseed, gating):
             test_acc = eval(args, target, model, device, test_loader)
 
             print("train: %f val: %f test: %f" % (train_acc, val_acc, test_acc))
-            model.gnn.gating = 0 if epoch < 30 else 0.5
+            model.gnn.gating = 5 * epoch/100
             # print(model.gnn.gating_parameter.data.item())
 
             # print(model.gnn.gating_parameter.item())
@@ -340,7 +340,7 @@ def main(runseed, gating):
 
 
 if __name__ == "__main__":
-    for gating in [0.5]:
+    for gating in [0]:
         total_acc = []
         for runseed in range(10):
             accs = main(runseed, gating)
