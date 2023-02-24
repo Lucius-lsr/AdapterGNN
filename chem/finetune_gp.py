@@ -1,4 +1,5 @@
 import argparse
+import math
 import statistics
 from time import sleep
 
@@ -117,7 +118,7 @@ def eval(args, target, model, device, loader):
     return roc_auc_score(y_true, y_scores[:, 1])
 
 
-def main(runseed):
+def main(runseed, gating):
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch implementation of pre-training of graph neural networks')
     parser.add_argument('--device', type=int, default=2,
@@ -143,12 +144,16 @@ def main(runseed):
     parser.add_argument('--JK', type=str, default="last",
                         help='how the node features across layers are combined. last, sum, max or concat')
     parser.add_argument('--gnn_type', type=str, default="gin")
-    parser.add_argument('--dataset', type=str, default='clintox',
-                        help='root directory of dataset. For now, only classification.')
-    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth',
-                        help='filename to read the model (if there is any)')
-    # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth',
-    #                     help='filename to read the model (if there is any)')
+
+    parser.add_argument('--dataset', type=str, default='bace')
+    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+
+    # parser.add_argument('--dataset', type=str, default='bbbp')
+    # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
+
+    # parser.add_argument('--dataset', type=str, default='clintox')
+    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+
     parser.add_argument('--filename', type=str, default='', help='output filename')
     parser.add_argument('--seed', type=int, default=42, help="Seed for splitting the dataset.")
     parser.add_argument('--runseed', type=int, default=runseed,
@@ -158,7 +163,7 @@ def main(runseed):
     parser.add_argument('--num_workers', type=int, default=4, help='number of workers for dataset loading')
 
     parser.add_argument('--setting', type=int, default=0)
-    parser.add_argument('--gating', type=float, default=0.0)
+    parser.add_argument('--gating', type=float, default=gating)
 
     args = parser.parse_args()
 
@@ -268,13 +273,14 @@ def main(runseed):
         # model_param_group.append({"params": model.gnn.parameters()})
         model_param_group.append({"params": model.gnn.prompt.parameters()})
 
-        # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr * 10})
-        # model_param_group.append({"params": model.gnn.parallel_prompt.parameters()})
-        # for name, p in model.gnn.named_parameters():
-        #     if name.startswith('batch_norms'):
-        #         model_param_group.append({"params": p})
-        #     elif not name.startswith('prompt') and name.endswith('bias'):
-        #         model_param_group.append({"params": p})
+        # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
+
+        # tunable batchnorm and bias
+        for name, p in model.gnn.named_parameters():
+            if name.startswith('batch_norms'):
+                model_param_group.append({"params": p})
+            elif not name.startswith('prompt') and name.endswith('bias'):
+                model_param_group.append({"params": p})
 
         if args.graph_pooling == "attention":
             model_param_group.append({"params": model.pool.parameters(), "lr": args.lr * args.lr_scale})
@@ -307,7 +313,11 @@ def main(runseed):
             val_acc = eval(args, target, model, device, val_loader)
             test_acc = eval(args, target, model, device, test_loader)
 
-            # print("train: %f val: %f test: %f" % (train_acc, val_acc, test_acc))
+            print("train: %f val: %f test: %f" % (train_acc, val_acc, test_acc))
+            model.gnn.gating = 0 if epoch < 30 else 0.5
+            # print(model.gnn.gating_parameter.data.item())
+
+            # print(model.gnn.gating_parameter.item())
             # for sp in model.gnn.sequential_prompt:
             #     print(round(list(sp.parameters())[0].abs().mean().item(), 4), end=' ')
             #     print(round(list(sp.parameters())[2].abs().mean().item(), 4), end=' ')
@@ -324,14 +334,15 @@ def main(runseed):
 
             # print("")
 
-        # print("assoc train: %f best val: %f assoc test: %f" % (assoc_train_acc, best_val_acc, assoc_test_acc))
+        print("assoc train: %f best val: %f assoc test: %f" % (assoc_train_acc, best_val_acc, assoc_test_acc))
         assoc_test_acc_list.append(assoc_test_acc)
     return assoc_test_acc_list
 
 
 if __name__ == "__main__":
-    total_acc = []
-    for runseed in range(10):
-        accs = main(runseed)
-        total_acc += accs
-    print('{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc), 100 * statistics.pstdev(total_acc)))
+    for gating in [0.5]:
+        total_acc = []
+        for runseed in range(10):
+            accs = main(runseed, gating)
+            total_acc += accs
+        print('{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc), 100 * statistics.pstdev(total_acc)))

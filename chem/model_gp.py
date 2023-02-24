@@ -269,11 +269,18 @@ class GNN_gp(torch.nn.Module):
 
         bottleneck_dim = 30
         self.gating_parameter = torch.nn.Parameter(torch.zeros(1))
-        self.gating_parameter.data += 0
+        self.gating_parameter.data += gating
         self.register_parameter('gating_parameter', self.gating_parameter)
 
+        # atte_dim = 30
+        # self.atte_K = torch.nn.Linear(emb_dim, atte_dim)
+        # self.atte_Q = torch.nn.Linear(emb_dim, atte_dim)
+        self.use_atte = False
+
         # ----------------------------------parameter-----------------------------------
+        # self.gating = self.gating_parameter
         self.gating = gating
+
         self.gating_m = gating_m
 
         connect_list = ['00', '00', '02', '12', '03', '13', '55']
@@ -320,7 +327,10 @@ class GNN_gp(torch.nn.Module):
             h = h_list[layer]
 
             if connect == '00':
-                h = h * (1 - gating_m) + self.prompt[layer](h_list[layer]) * gating
+                if self.use_atte:
+                    h = self.atte_fusion(h, h, self.prompt[layer](h_list[layer]))
+                else:
+                    h = h * (1 - gating_m) + self.prompt[layer](h_list[layer]) * gating
             if connect == '01':
                 self.gnns[layer].modify = 0
                 self.gnns[layer].set_prompt(self.prompt[layer], gating, gating_m)
@@ -340,7 +350,10 @@ class GNN_gp(torch.nn.Module):
             if connect == '03':
                 h = h * (1 - gating_m) + self.prompt[layer](h_list[layer]) * gating
             if connect == '13':
-                h = h * (1 - gating_m) + self.prompt[layer](x_aggr) * gating
+                if self.use_atte:
+                    h = self.atte_fusion(h, h, self.prompt[layer](h_list[layer]))
+                else:
+                    h = h * (1 - gating_m) + self.prompt[layer](x_aggr) * gating
 
             if layer < self.num_layer - 1:
                 h = F.relu(h)
@@ -365,6 +378,21 @@ class GNN_gp(torch.nn.Module):
 
         return node_representation
 
+    # def atte_fusion(self, h0, h1, h2):
+    #     q = self.atte_Q(h0).unsqueeze(-2)  # bs x 1 x atte_dim
+    #     k1 = self.atte_K(h1)  # bs x atte_dim
+    #     k2 = self.atte_K(h2)
+    #     k = torch.stack([k1, k2], dim=-1)  # bs x atte_dim x 2
+    #     a = q @ k  # bs x 1 x 2
+    #     a = torch.nn.functional.softmax(a, dim=-1)  # bs x 1 x 2
+    #     # print(a[:, 0, 0].mean().item())
+    #     # print(a[:, 0, 1].mean().item())
+    #     # print()
+    #     v = torch.stack([h1, h2], dim=-2)  # bs x 2 x emb_dim
+    #     v = a @ v
+    #     v = v.squeeze(-2)
+
+        return v
 
 class GNN_graphpred_gp(torch.nn.Module):
     """
