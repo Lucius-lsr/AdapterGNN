@@ -148,11 +148,11 @@ def main(runseed, gating):
     # parser.add_argument('--dataset', type=str, default='bace')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
 
-    parser.add_argument('--dataset', type=str, default='bbbp')
-    parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
+    # parser.add_argument('--dataset', type=str, default='bbbp')
+    # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
 
-    # parser.add_argument('--dataset', type=str, default='clintox')
-    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+    parser.add_argument('--dataset', type=str, default='clintox')
+    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
 
     parser.add_argument('--filename', type=str, default='', help='output filename')
     parser.add_argument('--seed', type=int, default=42, help="Seed for splitting the dataset.")
@@ -273,7 +273,7 @@ def main(runseed, gating):
         # model_param_group.append({"params": model.gnn.parameters()})
         model_param_group.append({"params": model.gnn.prompt.parameters()})
 
-        # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
+        model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
 
         # tunable batchnorm and bias
         for name, p in model.gnn.named_parameters():
@@ -314,8 +314,9 @@ def main(runseed, gating):
             test_acc = eval(args, target, model, device, test_loader)
 
             print("train: %f val: %f test: %f" % (train_acc, val_acc, test_acc))
-            model.gnn.gating = 5 * epoch/100
-            # print(model.gnn.gating_parameter.data.item())
+            for d in model.gnn.gating_parameter.data:
+                print(d.item())
+            print()
 
             # print(model.gnn.gating_parameter.item())
             # for sp in model.gnn.sequential_prompt:
@@ -340,7 +341,7 @@ def main(runseed, gating):
 
 
 if __name__ == "__main__":
-    for gating in [0]:
+    for gating in [0.01]:
         total_acc = []
         for runseed in range(10):
             accs = main(runseed, gating)

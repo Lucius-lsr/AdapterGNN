@@ -268,7 +268,7 @@ class GNN_gp(torch.nn.Module):
                 self.gnns.append(GraphSAGEConv(emb_dim))
 
         bottleneck_dim = 30
-        self.gating_parameter = torch.nn.Parameter(torch.zeros(1))
+        self.gating_parameter = torch.nn.Parameter(torch.zeros(self.num_layer))
         self.gating_parameter.data += gating
         self.register_parameter('gating_parameter', self.gating_parameter)
 
@@ -278,8 +278,8 @@ class GNN_gp(torch.nn.Module):
         self.use_atte = False
 
         # ----------------------------------parameter-----------------------------------
-        # self.gating = self.gating_parameter
-        self.gating = gating
+        self.gating = self.gating_parameter
+        # self.gating = gating
 
         self.gating_m = gating_m
 
@@ -325,12 +325,13 @@ class GNN_gp(torch.nn.Module):
         h_list = [x]
         for layer in range(self.num_layer):
             h = h_list[layer]
-
             if connect == '00':
                 if self.use_atte:
                     h = self.atte_fusion(h, h, self.prompt[layer](h_list[layer]))
                 else:
-                    h = h * (1 - gating_m) + self.prompt[layer](h_list[layer]) * gating
+                    delta = self.prompt[layer](h_list[layer])
+                    h = h * (1 - gating_m) + delta * gating[layer]
+                    # print(torch.norm(h, p=2).item()/h.shape[0], torch.norm(delta, p=2).item()/h.shape[0])
             if connect == '01':
                 self.gnns[layer].modify = 0
                 self.gnns[layer].set_prompt(self.prompt[layer], gating, gating_m)
@@ -353,7 +354,7 @@ class GNN_gp(torch.nn.Module):
                 if self.use_atte:
                     h = self.atte_fusion(h, h, self.prompt[layer](h_list[layer]))
                 else:
-                    h = h * (1 - gating_m) + self.prompt[layer](x_aggr) * gating
+                    h = h * (1 - gating_m) + self.prompt[layer](x_aggr) * gating[layer]
 
             if layer < self.num_layer - 1:
                 h = F.relu(h)
