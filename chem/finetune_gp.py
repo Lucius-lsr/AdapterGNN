@@ -154,6 +154,16 @@ def main(runseed, gating):
     parser.add_argument('--dataset', type=str, default='clintox')
     parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
 
+    # parser.add_argument('--dataset', type=str, default='bace')
+    # parser.add_argument('--dataset', type=str, default='bbbp')
+    # parser.add_argument('--dataset', type=str, default='clintox')
+    # parser.add_argument('--dataset', type=str, default='hiv')
+    # parser.add_argument('--dataset', type=str, default='sider')
+    # parser.add_argument('--dataset', type=str, default='tox21')
+    # parser.add_argument('--dataset', type=str, default='muv')
+    parser.add_argument('--dataset', type=str, default='toxcast')
+    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+
     parser.add_argument('--filename', type=str, default='', help='output filename')
     parser.add_argument('--seed', type=int, default=42, help="Seed for splitting the dataset.")
     parser.add_argument('--runseed', type=int, default=runseed,
@@ -228,7 +238,7 @@ def main(runseed, gating):
     # print(dataset)
 
     assoc_test_acc_list = []
-    for target in range(len(target_list)):
+    for target in range(num_tasks):
         if args.split == "scaffold":
             smiles_list = pd.read_csv('dataset/' + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
             train_dataset, valid_dataset, test_dataset = scaffold_split(dataset, smiles_list, task_idx=target,
@@ -271,7 +281,7 @@ def main(runseed, gating):
         # different learning rate for different part of GNN
         model_param_group = []
         # model_param_group.append({"params": model.gnn.parameters()})
-        model_param_group.append({"params": model.gnn.prompt.parameters()})
+        model_param_group.append({"params": model.gnn.prompt.parameters(), "lr": args.lr})
 
         model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
 
@@ -314,9 +324,8 @@ def main(runseed, gating):
             test_acc = eval(args, target, model, device, test_loader)
 
             print("train: %f val: %f test: %f" % (train_acc, val_acc, test_acc))
-            for d in model.gnn.gating_parameter.data:
-                print(d.item())
-            print()
+            model.gnn.gating = 0.1 * math.exp((epoch/100-1)*3)
+            # print(model.gnn.gating_parameter.data.item())
 
             # print(model.gnn.gating_parameter.item())
             # for sp in model.gnn.sequential_prompt:
