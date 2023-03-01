@@ -3,6 +3,7 @@ import math
 import statistics
 from time import sleep
 
+from finetune import train, eval
 from loader import MoleculeDataset
 from torch_geometric.loader import DataLoader
 
@@ -27,96 +28,12 @@ from tensorboardX import SummaryWriter
 
 from rdkit import RDLogger
 
+from utils import report
+
 RDLogger.DisableLog('rdApp.*')
 
 # criterion = nn.BCEWithLogitsLoss(reduction = "none")
 criterion = nn.CrossEntropyLoss()
-
-
-def train(args, target, model, device, loader, optimizer):
-    model.train()
-    # optimizer, optimizer_gating = optimizer_group[0], optimizer_group[1]
-
-    # for _ in range(5):
-    for step, batch in enumerate(loader):
-        batch = batch.to(device)
-        __, pred = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-        batch.y = batch.y.view(pred.shape[0], -1)
-        if len(batch.y.shape) > 1:
-            y = batch.y[:, target].flatten().to(torch.long)
-        else:
-            y = batch.y[target].flatten().to(torch.long)
-
-        optimizer.zero_grad()
-        loss = criterion(pred, y)
-        loss.backward()
-        optimizer.step()
-
-    # for _ in range(5):
-    # for step, batch in enumerate(loader):
-    #     batch = batch.to(device)
-    #     __, pred = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-    #     batch.y = batch.y.view(pred.shape[0], -1)
-    #     if len(batch.y.shape) > 1:
-    #         y = batch.y[:, target].flatten().to(torch.long)
-    #     else:
-    #         y = batch.y[target].flatten().to(torch.long)
-    #
-    #     optimizer_gating.zero_grad()
-    #     loss = criterion(pred, y)
-    #     loss.backward()
-    #     optimizer_gating.step()
-
-
-def eval(args, target, model, device, loader):
-    model.eval()
-    y_true = []
-    y_scores = []
-
-    # for step, batch in enumerate(tqdm(loader, desc="Iteration")):
-    for step, batch in enumerate(loader):
-        batch = batch.to(device)
-
-        with torch.no_grad():
-            __, pred = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-
-        pred = F.softmax(pred, dim=-1)
-
-        # y_true.append(batch.y.view(pred.shape))
-        # y_scores.append(pred)
-        batch.y = batch.y.view(pred.shape[0], -1)
-        if len(batch.y.shape) > 1:
-            y = batch.y[:, target].flatten()
-        else:
-            y = batch.y[target].flatten()
-
-        if device == 'cpu':
-            y_true.extend(y.numpy())
-            y_scores.extend(pred.detach().numpy())
-        else:
-            y_true.extend(y.cpu().numpy())
-            y_scores.extend(pred.cpu().detach().numpy())
-
-    # y_true = torch.cat(y_true, dim = 0).cpu().numpy()
-    # y_scores = torch.cat(y_scores, dim = 0).cpu().numpy()
-
-    # roc_list = []
-    # for i in range(y_true.shape[1]):
-    #     #AUC is only defined when there is at least one positive data.
-    #     if np.sum(y_true[:,i] == 1) > 0 and np.sum(y_true[:,i] == -1) > 0:
-    #         is_valid = y_true[:,i]**2 > 0
-    #         roc_list.append(roc_auc_score((y_true[is_valid,i] + 1)/2, y_scores[is_valid,i]))
-
-    # #if len(roc_list) < y_true.shape[1]:
-    # #    print("Some target is missing!")
-    # #    print("Missing ratio: %f" %(1 - float(len(roc_list))/y_true.shape[1]))
-
-    # return sum(roc_list)/len(roc_list) #y_true.shape[1]
-
-    y_true = np.array(y_true)
-    y_scores = np.array(y_scores)
-    return roc_auc_score(y_true, y_scores[:, 1])
-
 
 def main(runseed, gating):
     # Training settings
@@ -146,23 +63,18 @@ def main(runseed, gating):
     parser.add_argument('--gnn_type', type=str, default="gin")
 
     # parser.add_argument('--dataset', type=str, default='bace')
-    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
-
-    # parser.add_argument('--dataset', type=str, default='bbbp')
-    # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
-
-    parser.add_argument('--dataset', type=str, default='clintox')
-    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
-
-    # parser.add_argument('--dataset', type=str, default='bace')
     # parser.add_argument('--dataset', type=str, default='bbbp')
     # parser.add_argument('--dataset', type=str, default='clintox')
     # parser.add_argument('--dataset', type=str, default='hiv')
     # parser.add_argument('--dataset', type=str, default='sider')
-    # parser.add_argument('--dataset', type=str, default='tox21')
+    parser.add_argument('--dataset', type=str, default='tox21')
     # parser.add_argument('--dataset', type=str, default='muv')
-    parser.add_argument('--dataset', type=str, default='toxcast')
-    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+    # parser.add_argument('--dataset', type=str, default='toxcast')
+
+    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+    parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
+
+    parser.add_argument('--setting', type=int, default=5)
 
     parser.add_argument('--filename', type=str, default='', help='output filename')
     parser.add_argument('--seed', type=int, default=42, help="Seed for splitting the dataset.")
@@ -171,8 +83,6 @@ def main(runseed, gating):
     parser.add_argument('--split', type=str, default="scaffold", help="random or scaffold or random_scaffold")
     parser.add_argument('--eval_train', type=int, default=0, help='evaluating training or not')
     parser.add_argument('--num_workers', type=int, default=4, help='number of workers for dataset loading')
-
-    parser.add_argument('--setting', type=int, default=0)
     parser.add_argument('--gating', type=float, default=gating)
 
     args = parser.parse_args()
@@ -323,7 +233,7 @@ def main(runseed, gating):
             val_acc = eval(args, target, model, device, val_loader)
             test_acc = eval(args, target, model, device, test_loader)
 
-            print("train: %f val: %f test: %f" % (train_acc, val_acc, test_acc))
+            # print("train: %f val: %f test: %f" % (train_acc, val_acc, test_acc))
             model.gnn.gating = 0.1 * math.exp((epoch/100-1)*3)
             # print(model.gnn.gating_parameter.data.item())
 
@@ -350,9 +260,10 @@ def main(runseed, gating):
 
 
 if __name__ == "__main__":
-    for gating in [0.01]:
+    for gating in [0]:
         total_acc = []
-        for runseed in range(10):
+        repeat = 10
+        for runseed in range(repeat):
             accs = main(runseed, gating)
             total_acc += accs
-        print('{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc), 100 * statistics.pstdev(total_acc)))
+        report(repeat, total_acc)

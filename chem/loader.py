@@ -1149,7 +1149,7 @@ class MoleculeDataset(InMemoryDataset):
             self.data, self.slices = torch.load(self.processed_paths[0])
             self.data = Data(**self.data.__dict__)
             if self.data.y is not None:
-                self.data.y = (self.data.y.unsqueeze(-1) > 0).long()
+                self.data.y = self.data.y.unsqueeze(-1)
 
     def get(self, idx):
         data = Data()
@@ -1986,7 +1986,7 @@ def _load_bbbp_dataset(input_path):
     assert len(smiles_list) == len(preprocessed_smiles_list)
     assert len(smiles_list) == len(labels)
     return preprocessed_smiles_list, preprocessed_rdkit_mol_objs_list, \
-           labels.values
+        labels.values
 
 
 def _load_clintox_dataset(input_path):
@@ -2013,7 +2013,7 @@ def _load_clintox_dataset(input_path):
     assert len(smiles_list) == len(preprocessed_smiles_list)
     assert len(smiles_list) == len(labels)
     return preprocessed_smiles_list, preprocessed_rdkit_mol_objs_list, \
-           labels.values
+        labels.values
 
 
 # input_path = 'dataset/clintox/raw/clintox.csv'
@@ -2157,7 +2157,7 @@ def _load_toxcast_dataset(input_path):
     assert len(smiles_list) == len(preprocessed_smiles_list)
     assert len(smiles_list) == len(labels)
     return preprocessed_smiles_list, preprocessed_rdkit_mol_objs_list, \
-           labels.values
+        labels.values
 
 
 def _load_chembl_with_labels_dataset(root_path):

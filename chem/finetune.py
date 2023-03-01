@@ -25,6 +25,8 @@ from tensorboardX import SummaryWriter
 
 from rdkit import RDLogger
 
+from utils import report
+
 RDLogger.DisableLog('rdApp.*')
 
 # criterion = nn.BCEWithLogitsLoss(reduction = "none")
@@ -39,22 +41,19 @@ def train(args, target, model, device, loader, optimizer):
         batch = batch.to(device)
         __, pred = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
         # y = batch.y.view(pred.shape).to(torch.float64)
-        batch.y = batch.y.view(pred.shape[0], -1)
-        if len(batch.y.shape) > 1:
-            y = batch.y[:, target].flatten().to(torch.long)
-        else:
-            y = batch.y[target].flatten().to(torch.long)
 
-        # #Whether y is non-null or not.
-        # is_valid = y**2 > 0
-        # #Loss matrix
-        # loss_mat = criterion(pred.double(), (y+1)/2)
-        # #loss matrix after removing null target
-        # loss_mat = torch.where(is_valid, loss_mat, torch.zeros(loss_mat.shape).to(loss_mat.device).to(loss_mat.dtype))
+        batch.y = batch.y.view(pred.shape[0], -1)
+        y = batch.y[:, target].flatten().to(torch.long)
+
+        # Whether y is non-null or not.
+        is_valid = y ** 2 > 0
+        # Loss matrix
+        loss_mat = criterion(pred, ((y + 1) / 2).to(torch.long))
+        # loss matrix after removing null target
+        loss_mat = torch.where(is_valid, loss_mat, torch.zeros(loss_mat.shape).to(loss_mat.device).to(loss_mat.dtype))
 
         optimizer.zero_grad()
-        # loss = torch.sum(loss_mat)/torch.sum(is_valid)
-        loss = criterion(pred, y)
+        loss = torch.sum(loss_mat) / torch.sum(is_valid)
         loss.backward()
 
         optimizer.step()
@@ -65,8 +64,6 @@ def eval(args, target, model, device, loader):
     y_true = []
     y_scores = []
 
-    # for step, batch in enumerate(tqdm(loader, desc="Iteration")):
-    loss_list = []
     for step, batch in enumerate(loader):
         batch = batch.to(device)
 
@@ -75,43 +72,25 @@ def eval(args, target, model, device, loader):
 
         pred = F.softmax(pred, dim=-1)
 
-        # y_true.append(batch.y.view(pred.shape))
-        # y_scores.append(pred)
         batch.y = batch.y.view(pred.shape[0], -1)
-        if len(batch.y.shape) > 1:
-            y = batch.y[:, target].flatten()
-        else:
-            y = batch.y[target].flatten()
+        y = batch.y[:, target].flatten()
 
-        loss = criterion(pred, y)
-        loss_list.append(loss.item())
+        y_true.append(y)
+        y_scores.append(pred)
 
-        if device == 'cpu':
-            y_true.extend(y.numpy())
-            y_scores.extend(pred.detach().numpy())
-        else:
-            y_true.extend(y.cpu().numpy())
-            y_scores.extend(pred.cpu().detach().numpy())
+    y_true = torch.cat(y_true, dim=0).cpu().numpy()
+    y_scores = torch.cat(y_scores, dim=0).cpu().numpy()
 
-    # y_true = torch.cat(y_true, dim = 0).cpu().numpy()
-    # y_scores = torch.cat(y_scores, dim = 0).cpu().numpy()
+    # AUC is only defined when there is at least one positive data.
+    roc = -1
+    if np.sum(y_true == 1) > 0 and np.sum(y_true == -1) > 0:
+        is_valid = y_true ** 2 > 0
+        roc = roc_auc_score((y_true[is_valid] + 1) / 2, y_scores[is_valid][:, 1])
 
-    # roc_list = []
-    # for i in range(y_true.shape[1]):
-    #     #AUC is only defined when there is at least one positive data.
-    #     if np.sum(y_true[:,i] == 1) > 0 and np.sum(y_true[:,i] == -1) > 0:
-    #         is_valid = y_true[:,i]**2 > 0
-    #         roc_list.append(roc_auc_score((y_true[is_valid,i] + 1)/2, y_scores[is_valid,i]))
+    if roc == -1:
+        print("Some target is missing!")
 
-    # #if len(roc_list) < y_true.shape[1]:
-    # #    print("Some target is missing!")
-    # #    print("Missing ratio: %f" %(1 - float(len(roc_list))/y_true.shape[1]))
-
-    # return sum(roc_list)/len(roc_list) #y_true.shape[1]
-
-    y_true = np.array(y_true)
-    y_scores = np.array(y_scores)
-    return roc_auc_score(y_true, y_scores[:, 1]), sum(loss_list) / len(loss_list)
+    return roc
 
 
 def main(runseed):
@@ -121,7 +100,7 @@ def main(runseed):
                         help='which gpu to use if any (default: 0)')
     parser.add_argument('--batch_size', type=int, default=32,
                         help='input batch size for training (default: 32)')
-    parser.add_argument('--epochs', type=int, default=300,
+    parser.add_argument('--epochs', type=int, default=100,
                         help='number of epochs to train (default: 100)')
     parser.add_argument('--lr', type=float, default=0.001,
                         help='learning rate (default: 0.001)')
@@ -140,17 +119,25 @@ def main(runseed):
     parser.add_argument('--JK', type=str, default="last",
                         help='how the node features across layers are combined. last, sum, max or concat')
     parser.add_argument('--gnn_type', type=str, default="gin")
-    parser.add_argument('--dataset', type=str, default='sider',
-                        help='root directory of dataset. For now, only classification.')
-    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth',
-    #                     help='filename to read the model (if there is any)')
-    # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth',
-    #                     help='filename to read the model (if there is any)')
+
+    # parser.add_argument('--dataset', type=str, default='bace')
+    # parser.add_argument('--dataset', type=str, default='bbbp')
+    # parser.add_argument('--dataset', type=str, default='clintox')
+    # parser.add_argument('--dataset', type=str, default='hiv')
+    # parser.add_argument('--dataset', type=str, default='sider')
+    parser.add_argument('--dataset', type=str, default='tox21')  # {-1.0: 72084, 1.0: 5862, 0.0: 16026}
+    # parser.add_argument('--dataset', type=str, default='muv')  # {0.0: 1332593, -1.0: 249397, 1.0: 489}
+    # parser.add_argument('--dataset', type=str, default='toxcast')  # {-1.0: 1407009, 0.0: 3757732, 1.0: 126651}
+
+    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+    parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
+
     parser.add_argument('--filename', type=str, default='', help='output filename')
     parser.add_argument('--seed', type=int, default=42, help="Seed for splitting the dataset.")
-    parser.add_argument('--runseed', type=int, default=runseed, help="Seed for minibatch selection, random initialization.")
+    parser.add_argument('--runseed', type=int, default=runseed,
+                        help="Seed for minibatch selection, random initialization.")
     parser.add_argument('--split', type=str, default="scaffold", help="random or scaffold or random_scaffold")
-    parser.add_argument('--eval_train', type=int, default=1, help='evaluating training or not')
+    parser.add_argument('--eval_train', type=int, default=0, help='evaluating training or not')
     parser.add_argument('--num_workers', type=int, default=4, help='number of workers for dataset loading')
     args = parser.parse_args()
 
@@ -214,8 +201,7 @@ def main(runseed):
     dataset = MoleculeDataset("dataset/" + args.dataset, dataset=args.dataset)
 
     assoc_test_acc_list = []
-    ave_loss_gap = 0
-    for target in range(len(target_list)):
+    for target in range(num_tasks):
         if args.split == "scaffold":
             smiles_list = pd.read_csv('dataset/' + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
             train_dataset, valid_dataset, test_dataset = scaffold_split(dataset, smiles_list, task_idx=target,
@@ -248,8 +234,8 @@ def main(runseed):
         # set up model
         model = GNN_graphpred(args.num_layer, args.emb_dim, JK=args.JK, drop_ratio=args.dropout_ratio,
                               graph_pooling=args.graph_pooling, gnn_type=args.gnn_type)
-        # if not args.input_model_file == "":
-        #     model.from_pretrained(args.input_model_file)
+        if not args.input_model_file == "":
+            model.from_pretrained(args.input_model_file)
 
         model.to(device)
 
@@ -283,13 +269,14 @@ def main(runseed):
             else:
                 #    print("omit the training accuracy computation")
                 train_acc = 0
-            val_acc, val_loss = eval(args, target, model, device, val_loader)
-            test_acc, test_loss = eval(args, target, model, device, test_loader)
-
-            # print("train: %f val: %f test: %f" %(train_acc, val_acc, test_acc))
-            print("train: %f val: %f test: %f" % (train_loss, val_loss, test_loss))
-            if epoch > args.epochs - 50:
-                ave_loss_gap += test_loss - train_loss
+            val_acc = eval(args, target, model, device, val_loader)
+            test_acc = eval(args, target, model, device, test_loader)
+            if val_acc == -1 or test_acc == -1:
+                continue
+            # print("train: %f val: %f test: %f" % (train_acc, val_acc, test_acc))
+            # print("train: %f val: %f test: %f" % (train_loss, val_loss, test_loss))
+            # if epoch > args.epochs - 50:
+            #     ave_loss_gap += test_loss - train_loss
 
             if val_acc > best_val_acc:
                 assoc_train_acc = train_acc
@@ -300,19 +287,16 @@ def main(runseed):
             test_acc_list.append(test_acc)
             train_acc_list.append(train_acc)
 
-            # print("")
-
         print("assoc train: %f best val: %f assoc test: %f" % (assoc_train_acc, best_val_acc, assoc_test_acc))
         assoc_test_acc_list.append(assoc_test_acc)
-    print(ave_loss_gap/50)
 
     return assoc_test_acc_list
 
 
 if __name__ == "__main__":
     total_acc = []
-    for runseed in range(1):
+    repeat = 10
+    for runseed in range(repeat):
         accs = main(runseed)
         total_acc += accs
-    print('Average acc:{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc),
-                                             100 * statistics.pstdev(total_acc)))
+    report(repeat, total_acc)
