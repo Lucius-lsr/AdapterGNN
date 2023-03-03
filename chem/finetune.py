@@ -129,8 +129,8 @@ def main(runseed):
     # parser.add_argument('--dataset', type=str, default='muv')  # {0.0: 1332593, -1.0: 249397, 1.0: 489}
     # parser.add_argument('--dataset', type=str, default='toxcast')  # {-1.0: 1407009, 0.0: 3757732, 1.0: 126651}
 
-    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
-    parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
+    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+    # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
 
     parser.add_argument('--filename', type=str, default='', help='output filename')
     parser.add_argument('--seed', type=int, default=42, help="Seed for splitting the dataset.")

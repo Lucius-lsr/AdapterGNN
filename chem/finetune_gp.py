@@ -71,8 +71,8 @@ def main(runseed, gating):
     # parser.add_argument('--dataset', type=str, default='muv')
     # parser.add_argument('--dataset', type=str, default='toxcast')
 
-    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
-    parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
+    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+    # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
 
     parser.add_argument('--setting', type=int, default=5)
 
@@ -242,6 +242,9 @@ def main(runseed, gating):
             #     print(round(list(sp.parameters())[0].abs().mean().item(), 4), end=' ')
             #     print(round(list(sp.parameters())[2].abs().mean().item(), 4), end=' ')
             # print()
+
+            if val_acc == -1 or test_acc == -1:
+                continue
 
             if val_acc > best_val_acc:
                 assoc_train_acc = train_acc

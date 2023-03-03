@@ -308,13 +308,13 @@ class GNN_graphpred(torch.nn.Module):
     JK-net: https://arxiv.org/abs/1806.03536
     """
 
-    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, graph_pooling="mean", gnn_type="gin"):
+    def __init__(self, num_layer, emb_dim, num_task=2, JK="last", drop_ratio=0, graph_pooling="mean", gnn_type="gin"):
         super(GNN_graphpred, self).__init__()
         self.num_layer = num_layer
         self.drop_ratio = drop_ratio
         self.JK = JK
         self.emb_dim = emb_dim
-        self.num_tasks = 2
+        self.num_tasks = num_task
 
         if self.num_layer < 2:
             raise ValueError("Number of GNN layers must be greater than 1.")
