@@ -1,6 +1,5 @@
 import argparse
 
-from model_p import GNN_prompt
 from loader import MoleculeDataset
 from dataloader import DataLoaderMasking  # , DataListLoader
 
@@ -47,7 +46,7 @@ def train(args, model_list, loader, optimizer_list, device):
 
     for step, batch in enumerate(tqdm(loader, desc="Iteration")):
         batch = batch.to(device)
-        node_rep = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+        node_rep = model(batch.x, batch.edge_index, batch.edge_attr)
 
         ## loss for nodes
         pred_node = linear_pred_atoms(node_rep[batch.masked_atom_indices])
@@ -97,7 +96,7 @@ def main():
                         help='number of GNN message passing layers (default: 5).')
     parser.add_argument('--emb_dim', type=int, default=300,
                         help='embedding dimensions (default: 300)')
-    parser.add_argument('--dropout_ratio', type=float, default=0.2,
+    parser.add_argument('--dropout_ratio', type=float, default=0,
                         help='dropout ratio (default: 0)')
     parser.add_argument('--mask_rate', type=float, default=0.15,
                         help='dropout ratio (default: 0.15)')
@@ -107,10 +106,10 @@ def main():
                         help='how the node features are combined across layers. last, sum, max or concat')
     parser.add_argument('--dataset', type=str, default='zinc_standard_agent',
                         help='root directory of dataset for pretraining')
-    parser.add_argument('--output_model_file', type=str, default='masking_prompt_atte_mul_0206', help='filename to output the model')
+    parser.add_argument('--output_model_file', type=str, default='', help='filename to output the model')
     parser.add_argument('--gnn_type', type=str, default="gin")
     parser.add_argument('--seed', type=int, default=0, help="Seed for splitting dataset.")
-    parser.add_argument('--num_workers', type=int, default=1, help='number of workers for dataset loading')
+    parser.add_argument('--num_workers', type=int, default=8, help='number of workers for dataset loading')
     args = parser.parse_args()
 
     torch.manual_seed(0)
@@ -129,17 +128,8 @@ def main():
     loader = DataLoaderMasking(dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
     # set up models, one for pre-training and one for context embeddings
-    model = GNN_prompt(args.num_layer, args.emb_dim, JK=args.JK, drop_ratio=args.dropout_ratio, gnn_type=args.gnn_type)
-    model_file = 'model_gin/masking.pth'
-    model.load_state_dict(torch.load(model_file), strict=False)
-    model = model.to(device)
-    # params_tuned = [
-    #     {'params': model.virtual},
-    #     {'params': model.virtual_edge},
-    #     # {'params': model.key},
-    #     # {'params': model.attention_mlp.parameters()},
-    # ]
-
+    model = GNN(args.num_layer, args.emb_dim, JK=args.JK, drop_ratio=args.dropout_ratio, gnn_type=args.gnn_type).to(
+        device)
     linear_pred_atoms = torch.nn.Linear(args.emb_dim, 119).to(device)
     linear_pred_bonds = torch.nn.Linear(args.emb_dim, 4).to(device)
 
@@ -147,7 +137,6 @@ def main():
 
     # set up optimizers
     optimizer_model = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.decay)
-    # optimizer_model = optim.Adam(params_tuned, lr=args.lr, weight_decay=args.decay)
     optimizer_linear_pred_atoms = optim.Adam(linear_pred_atoms.parameters(), lr=args.lr, weight_decay=args.decay)
     optimizer_linear_pred_bonds = optim.Adam(linear_pred_bonds.parameters(), lr=args.lr, weight_decay=args.decay)
 
