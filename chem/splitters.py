@@ -3,11 +3,13 @@ import random
 import numpy as np
 from itertools import compress
 from rdkit.Chem.Scaffolds import MurckoScaffold
+from rdkit import RDLogger
 from collections import defaultdict
 from sklearn.model_selection import StratifiedKFold
 
 # splitter function
 from torch_geometric.data import Data
+RDLogger.DisableLog('rdApp.*')
 
 
 def generate_scaffold(smiles, include_chirality=False):

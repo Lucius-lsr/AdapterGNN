@@ -1,6 +1,7 @@
 import argparse
 import statistics
 
+from model_gp import GNN_graphpred_gp
 from loader import MoleculeDataset
 from torch_geometric.data import DataLoader
 
@@ -21,6 +22,9 @@ import pandas as pd
 import os
 import shutil
 
+import warnings
+
+warnings.filterwarnings("ignore")
 
 criterion = nn.BCEWithLogitsLoss(reduction="none")
 
@@ -71,14 +75,14 @@ def eval(args, model, device, loader):
             is_valid = y_true[:, i] ** 2 > 0
             roc_list.append(roc_auc_score((y_true[is_valid, i] + 1) / 2, y_scores[is_valid, i]))
 
-    if len(roc_list) < y_true.shape[1]:
-        print("Some target is missing!")
-        print("Missing ratio: %f" % (1 - float(len(roc_list)) / y_true.shape[1]))
+    # if len(roc_list) < y_true.shape[1]:
+    #     print("Some target is missing!")
+    #     print("Missing ratio: %f" % (1 - float(len(roc_list)) / y_true.shape[1]))
 
     return sum(roc_list) / len(roc_list)  # y_true.shape[1]
 
 
-def main(runseed):
+def main(runseed, dataset):
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch implementation of pre-training of graph neural networks')
     parser.add_argument('--device', type=int, default=0,
@@ -105,6 +109,8 @@ def main(runseed):
                         help='how the node features across layers are combined. last, sum, max or concat')
     parser.add_argument('--gnn_type', type=str, default="gin")
 
+    parser.add_argument('--dataset', type=str, default=dataset)
+
     # parser.add_argument('--dataset', type=str, default='bace')
     # parser.add_argument('--dataset', type=str, default='bbbp')
     # parser.add_argument('--dataset', type=str, default='clintox')
@@ -112,14 +118,19 @@ def main(runseed):
     # parser.add_argument('--dataset', type=str, default='sider')
     # parser.add_argument('--dataset', type=str, default='tox21')  # {-1.0: 72084, 1.0: 5862, 0.0: 16026}
     # parser.add_argument('--dataset', type=str, default='muv')  # {0.0: 1332593, -1.0: 249397, 1.0: 489}
-    parser.add_argument('--dataset', type=str, default='toxcast')  # {-1.0: 1407009, 0.0: 3757732, 1.0: 126651}
+    # parser.add_argument('--dataset', type=str, default='toxcast')  # {-1.0: 1407009, 0.0: 3757732, 1.0: 126651}
 
     # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
-    parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
+    # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
+    # parser.add_argument('--input_model_file', type=str, default='')
+    # parser.add_argument('--input_model_file', type=str, default='model_gin/infomax.pth')
+    # parser.add_argument('--input_model_file', type=str, default='model_gin/edgepred.pth')
+    parser.add_argument('--input_model_file', type=str, default='model_gin/contextpred.pth')
 
     parser.add_argument('--filename', type=str, default='', help='output filename')
     parser.add_argument('--seed', type=int, default=42, help="Seed for splitting the dataset.")
-    parser.add_argument('--runseed', type=int, default=runseed, help="Seed for minibatch selection, random initialization.")
+    parser.add_argument('--runseed', type=int, default=runseed,
+                        help="Seed for minibatch selection, random initialization.")
     parser.add_argument('--split', type=str, default="scaffold", help="random or scaffold or random_scaffold")
     parser.add_argument('--eval_train', type=int, default=0, help='evaluating training or not')
     parser.add_argument('--num_workers', type=int, default=4, help='number of workers for dataset loading')
@@ -158,19 +169,17 @@ def main(runseed):
 
     if args.split == "scaffold":
         smiles_list = pd.read_csv('dataset/' + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
-        train_dataset, valid_dataset, test_dataset = scaffold_split_multask(dataset, smiles_list, null_value=0, frac_train=0.8,
-                                                                    frac_valid=0.1, frac_test=0.1)
-        print("scaffold")
+        train_dataset, valid_dataset, test_dataset = scaffold_split_multask(dataset, smiles_list, null_value=0,
+                                                                            frac_train=0.8,
+                                                                            frac_valid=0.1, frac_test=0.1)
     elif args.split == "random":
         train_dataset, valid_dataset, test_dataset = random_split(dataset, null_value=0, frac_train=0.8, frac_valid=0.1,
                                                                   frac_test=0.1, seed=args.seed)
-        print("random")
     elif args.split == "random_scaffold":
         smiles_list = pd.read_csv('dataset/' + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
         train_dataset, valid_dataset, test_dataset = random_scaffold_split(dataset, smiles_list, null_value=0,
                                                                            frac_train=0.8, frac_valid=0.1,
                                                                            frac_test=0.1, seed=args.seed)
-        print("random scaffold")
     else:
         raise ValueError("Invalid split option.")
 
@@ -183,16 +192,24 @@ def main(runseed):
                           graph_pooling=args.graph_pooling, gnn_type=args.gnn_type)
     if not args.input_model_file == "":
         model.from_pretrained(args.input_model_file)
-
     model.to(device)
 
-    # set up optimizer
-    # different learning rate for different part of GNN
+    # baseline
     model_param_group = []
     model_param_group.append({"params": model.gnn.parameters()})
-    if args.graph_pooling == "attention":
-        model_param_group.append({"params": model.pool.parameters(), "lr": args.lr * args.lr_scale})
     model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr * args.lr_scale})
+
+    # gp
+    # model_param_group = []
+    # model_param_group.append({"params": model.gnn.prompt.parameters(), "lr": args.lr})
+    # # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
+    # for name, p in model.gnn.named_parameters():
+    #     if name.startswith('batch_norms'):
+    #         model_param_group.append({"params": p})
+    #     elif not name.startswith('prompt') and name.endswith('bias'):
+    #         model_param_group.append({"params": p})
+    # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr * args.lr_scale})
+
     optimizer = optim.Adam(model_param_group, lr=args.lr, weight_decay=args.decay)
 
     assoc_train_acc = -1
@@ -208,7 +225,7 @@ def main(runseed):
         val_acc = eval(args, model, device, val_loader)
         test_acc = eval(args, model, device, test_loader)
 
-        print("train: %f val: %f test: %f" % (train_acc, val_acc, test_acc))
+        # print("train: %f val: %f test: %f" % (train_acc, val_acc, test_acc))
 
         if val_acc > best_val_acc:
             assoc_train_acc = train_acc
@@ -217,10 +234,17 @@ def main(runseed):
 
     return assoc_test_acc
 
+
 if __name__ == "__main__":
-    total_acc = []
-    repeat = 10
-    for runseed in range(repeat):
-        acc = main(runseed)
-        total_acc.append(acc)
-    print('Average acc:{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc), 100 * statistics.pstdev(total_acc)))
+    overall = []
+    for dataset in ['bace', 'bbbp', 'clintox', 'hiv', 'sider', 'tox21', 'muv', 'toxcast']:
+        total_acc = []
+        repeat = 10
+        for runseed in range(repeat):
+            acc = main(runseed, dataset)
+            total_acc.append(acc)
+            overall.append(acc)
+        print('Average acc:{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc),
+                                                 100 * statistics.pstdev(total_acc)))
+    print()
+    print(100 * sum(overall) / len(overall))

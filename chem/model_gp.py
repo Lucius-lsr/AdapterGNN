@@ -240,7 +240,7 @@ class GNN_gp(torch.nn.Module):
 
     """
 
-    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, gnn_type="gin", setting=0, gating=0, gating_m=0):
+    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, gnn_type="gin"):
         super(GNN_gp, self).__init__()
         self.num_layer = num_layer
         self.drop_ratio = drop_ratio
@@ -270,8 +270,10 @@ class GNN_gp(torch.nn.Module):
         bottleneck_dim = 30
         self.mul_learnable = False
 
+        gating = 0.01
+        gating_m = 0
+        setting = 5
         self.gating_parameter = torch.nn.Parameter(torch.zeros(self.num_layer if self.mul_learnable else 1))
-
         self.gating_parameter.data += gating
         self.register_parameter('gating_parameter', self.gating_parameter)
 
@@ -281,8 +283,8 @@ class GNN_gp(torch.nn.Module):
         self.use_atte = False
 
         # ----------------------------------parameter-----------------------------------
-        # self.gating = self.gating_parameter
-        self.gating = gating
+        self.gating = self.gating_parameter
+        # self.gating = gating
 
         self.gating_m = gating_m
 
@@ -402,8 +404,7 @@ class GNN_gp(torch.nn.Module):
     #     v = torch.stack([h1, h2], dim=-2)  # bs x 2 x emb_dim
     #     v = a @ v
     #     v = v.squeeze(-2)
-
-        return v
+    #     return v
 
 class GNN_graphpred_gp(torch.nn.Module):
     """
@@ -422,20 +423,18 @@ class GNN_graphpred_gp(torch.nn.Module):
     JK-net: https://arxiv.org/abs/1806.03536
     """
 
-    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, graph_pooling="mean", gnn_type="gin", setting=0,
-                 gating=0, gating_m=0):
+    def __init__(self, num_layer, emb_dim, num_tasks=2, JK="last", drop_ratio=0, graph_pooling="mean", gnn_type="gin"):
         super(GNN_graphpred_gp, self).__init__()
         self.num_layer = num_layer
         self.drop_ratio = drop_ratio
         self.JK = JK
         self.emb_dim = emb_dim
-        self.num_tasks = 2
+        self.num_tasks = num_tasks
 
         if self.num_layer < 2:
             raise ValueError("Number of GNN layers must be greater than 1.")
 
-        self.gnn = GNN_gp(num_layer, emb_dim, JK, drop_ratio, gnn_type=gnn_type, setting=setting, gating=gating,
-                          gating_m=gating_m)
+        self.gnn = GNN_gp(num_layer, emb_dim, JK, drop_ratio, gnn_type=gnn_type)
 
         # Different kind of graph pooling
         if graph_pooling == "sum":
@@ -470,7 +469,6 @@ class GNN_graphpred_gp(torch.nn.Module):
             self.graph_pred_linear = torch.nn.Linear(self.mult * self.emb_dim, self.num_tasks)
 
     def from_pretrained(self, model_file):
-        # self.gnn = GNN(self.num_layer, self.emb_dim, JK = self.JK, drop_ratio = self.drop_ratio)
         self.gnn.load_state_dict(torch.load(model_file), strict=False)
 
     def forward(self, *argv):
