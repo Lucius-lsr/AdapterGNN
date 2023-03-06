@@ -122,10 +122,10 @@ def main(runseed, dataset):
 
     # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
     # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
-    # parser.add_argument('--input_model_file', type=str, default='')
+    parser.add_argument('--input_model_file', type=str, default='')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/infomax.pth')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/edgepred.pth')
-    parser.add_argument('--input_model_file', type=str, default='model_gin/contextpred.pth')
+    # parser.add_argument('--input_model_file', type=str, default='model_gin/contextpred.pth')
 
     parser.add_argument('--filename', type=str, default='', help='output filename')
     parser.add_argument('--seed', type=int, default=42, help="Seed for splitting the dataset.")
@@ -188,27 +188,27 @@ def main(runseed, dataset):
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
     # set up model
-    model = GNN_graphpred(args.num_layer, args.emb_dim, num_tasks, JK=args.JK, drop_ratio=args.dropout_ratio,
+    model = GNN_graphpred_gp(args.num_layer, args.emb_dim, num_tasks, JK=args.JK, drop_ratio=args.dropout_ratio,
                           graph_pooling=args.graph_pooling, gnn_type=args.gnn_type)
     if not args.input_model_file == "":
         model.from_pretrained(args.input_model_file)
     model.to(device)
 
     # baseline
-    model_param_group = []
-    model_param_group.append({"params": model.gnn.parameters()})
-    model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr * args.lr_scale})
+    # model_param_group = []
+    # model_param_group.append({"params": model.gnn.parameters()})
+    # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr * args.lr_scale})
 
     # gp
-    # model_param_group = []
-    # model_param_group.append({"params": model.gnn.prompt.parameters(), "lr": args.lr})
-    # # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
-    # for name, p in model.gnn.named_parameters():
-    #     if name.startswith('batch_norms'):
-    #         model_param_group.append({"params": p})
-    #     elif not name.startswith('prompt') and name.endswith('bias'):
-    #         model_param_group.append({"params": p})
-    # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr * args.lr_scale})
+    model_param_group = []
+    model_param_group.append({"params": model.gnn.prompt.parameters(), "lr": args.lr})
+    # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
+    for name, p in model.gnn.named_parameters():
+        if name.startswith('batch_norms'):
+            model_param_group.append({"params": p})
+        elif not name.startswith('prompt') and name.endswith('bias'):
+            model_param_group.append({"params": p})
+    model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr * args.lr_scale})
 
     optimizer = optim.Adam(model_param_group, lr=args.lr, weight_decay=args.decay)
 
