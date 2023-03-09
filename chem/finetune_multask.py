@@ -1,6 +1,7 @@
 import argparse
 import statistics
 
+from model_reweight import GNN_graphpred_reweight
 from model_gp import GNN_graphpred_gp
 from loader import MoleculeDataset
 from torch_geometric.data import DataLoader
@@ -97,8 +98,8 @@ def main(runseed, dataset):
                         help='relative learning rate for the feature extraction layer (default: 1)')
     parser.add_argument('--decay', type=float, default=0,
                         help='weight decay (default: 0)')
-    parser.add_argument('--num_layer', type=int, default=5,
-                        help='number of GNN message passing layers (default: 5).')
+    # parser.add_argument('--num_layer', type=int, default=5,
+    #                     help='number of GNN message passing layers (default: 5).')
     parser.add_argument('--emb_dim', type=int, default=300,
                         help='embedding dimensions (default: 300)')
     parser.add_argument('--dropout_ratio', type=float, default=0.5,
@@ -120,12 +121,16 @@ def main(runseed, dataset):
     # parser.add_argument('--dataset', type=str, default='muv')  # {0.0: 1332593, -1.0: 249397, 1.0: 489}
     # parser.add_argument('--dataset', type=str, default='toxcast')  # {-1.0: 1407009, 0.0: 3757732, 1.0: 126651}
 
-    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
     # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
-    parser.add_argument('--input_model_file', type=str, default='')
+    # parser.add_argument('--input_model_file', type=str, default='')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/infomax.pth')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/edgepred.pth')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/contextpred.pth')
+    # parser.add_argument('--input_model_file', type=str, default='models_simgrace/simgrace_80.pth')
+
+    # parser.add_argument('--input_model_file', type=str, default='2_300.pth')
+    parser.add_argument('--num_layer', type=int, default=5)
 
     parser.add_argument('--filename', type=str, default='', help='output filename')
     parser.add_argument('--seed', type=int, default=42, help="Seed for splitting the dataset.")
@@ -188,7 +193,7 @@ def main(runseed, dataset):
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
     # set up model
-    model = GNN_graphpred_gp(args.num_layer, args.emb_dim, num_tasks, JK=args.JK, drop_ratio=args.dropout_ratio,
+    model = GNN_graphpred_reweight(args.num_layer, args.emb_dim, num_tasks, JK=args.JK, drop_ratio=args.dropout_ratio,
                           graph_pooling=args.graph_pooling, gnn_type=args.gnn_type)
     if not args.input_model_file == "":
         model.from_pretrained(args.input_model_file)
@@ -197,18 +202,28 @@ def main(runseed, dataset):
     # baseline
     # model_param_group = []
     # model_param_group.append({"params": model.gnn.parameters()})
-    # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr * args.lr_scale})
+    # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
 
     # gp
-    model_param_group = []
-    model_param_group.append({"params": model.gnn.prompt.parameters(), "lr": args.lr})
+    # model_param_group = []
+    # model_param_group.append({"params": model.gnn.prompt.parameters(), "lr": args.lr})
     # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
+    # for name, p in model.gnn.named_parameters():
+    #     if name.startswith('batch_norms'):
+    #         model_param_group.append({"params": p})
+    #     elif not name.startswith('prompt') and name.endswith('bias'):
+    #         model_param_group.append({"params": p})
+    # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
+
+    # reweight
+    model_param_group = []
+    model_param_group.append({"params": model.gnn.reweights, "lr": args.lr})
     for name, p in model.gnn.named_parameters():
         if name.startswith('batch_norms'):
             model_param_group.append({"params": p})
         elif not name.startswith('prompt') and name.endswith('bias'):
             model_param_group.append({"params": p})
-    model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr * args.lr_scale})
+    model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
 
     optimizer = optim.Adam(model_param_group, lr=args.lr, weight_decay=args.decay)
 
@@ -237,14 +252,16 @@ def main(runseed, dataset):
 
 if __name__ == "__main__":
     overall = []
-    for dataset in ['bace', 'bbbp', 'clintox', 'hiv', 'sider', 'tox21', 'muv', 'toxcast']:
+    quick_exp = ['bace', 'bbbp', 'clintox', 'sider', 'tox21', 'toxcast']
+    full_exp = ['bace', 'bbbp', 'clintox', 'hiv', 'sider', 'tox21', 'muv', 'toxcast']
+    for dataset in quick_exp:
         total_acc = []
         repeat = 10
         for runseed in range(repeat):
             acc = main(runseed, dataset)
             total_acc.append(acc)
             overall.append(acc)
-        print('Average acc:{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc),
+        print('{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc),
                                                  100 * statistics.pstdev(total_acc)))
     print()
     print(100 * sum(overall) / len(overall))
