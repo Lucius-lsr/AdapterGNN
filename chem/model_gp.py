@@ -364,6 +364,137 @@ class GNN_gp(torch.nn.Module):
         return node_representation
 
 
+class GNN_gp_311(torch.nn.Module):
+    def __init__(self, num_layer, emb_dim, JK="last", drop_ratio=0, gnn_type="gin"):
+        super(GNN_gp_311, self).__init__()
+        self.num_layer = num_layer
+        self.drop_ratio = drop_ratio
+        self.JK = JK
+
+        if self.num_layer < 2:
+            raise ValueError("Number of GNN layers must be greater than 1.")
+
+        self.x_embedding1 = torch.nn.Embedding(num_atom_type, emb_dim)
+        self.x_embedding2 = torch.nn.Embedding(num_chirality_tag, emb_dim)
+
+        torch.nn.init.xavier_uniform_(self.x_embedding1.weight.data)
+        torch.nn.init.xavier_uniform_(self.x_embedding2.weight.data)
+
+        # List of MLPs
+        self.gnns = torch.nn.ModuleList()
+        for layer in range(num_layer):
+            if gnn_type == "gin":
+                self.gnns.append(GINConv(emb_dim, aggr="add"))
+            elif gnn_type == "gcn":
+                self.gnns.append(GCNConv(emb_dim))
+            elif gnn_type == "gat":
+                self.gnns.append(GATConv(emb_dim))
+            elif gnn_type == "graphsage":
+                self.gnns.append(GraphSAGEConv(emb_dim))
+
+        bottleneck_dim = 15
+
+        gating = 0.01
+        self.gating_parameter_0 = torch.nn.Parameter(torch.zeros(1))
+        self.gating_parameter_0.data += gating
+        self.register_parameter('gating_parameter_0', self.gating_parameter_0)
+        self.gating_parameter_1 = torch.nn.Parameter(torch.zeros(1))
+        self.gating_parameter_1.data += gating
+        self.register_parameter('gating_parameter_1', self.gating_parameter_1)
+
+        # ----------------------------------parameter-----------------------------------
+        self.gating_0 = self.gating_parameter_0
+        self.gating_1 = self.gating_parameter_1
+
+        self.batch_norms = torch.nn.ModuleList()
+        self.prompt_seq = torch.nn.ModuleList()
+        self.prompt_par = torch.nn.ModuleList()
+
+        # self.re_weight = torch.nn.Parameter(torch.ones(num_layer, emb_dim))
+        # self.register_parameter('re_weight', self.re_weight)
+
+        for layer in range(num_layer):
+            self.batch_norms.append(torch.nn.BatchNorm1d(emb_dim))
+            self.prompt_seq.append(torch.nn.Sequential(
+                torch.nn.Linear(emb_dim, bottleneck_dim),
+                torch.nn.ReLU(),
+                torch.nn.Linear(bottleneck_dim, emb_dim),
+                torch.nn.BatchNorm1d(emb_dim)
+            ))
+            self.prompt_par.append(torch.nn.Sequential(
+                torch.nn.Linear(emb_dim, bottleneck_dim),
+                torch.nn.ReLU(),
+                torch.nn.Linear(bottleneck_dim, emb_dim),
+                torch.nn.BatchNorm1d(emb_dim)
+            ))
+            torch.nn.init.zeros_(self.prompt_seq[-1][2].weight.data)
+            torch.nn.init.zeros_(self.prompt_seq[-1][2].bias.data)
+            torch.nn.init.zeros_(self.prompt_par[-1][2].weight.data)
+            torch.nn.init.zeros_(self.prompt_par[-1][2].bias.data)
+
+        # self.ave_linear_1 = torch.nn.Linear(emb_dim, bottleneck_dim)
+        # self.ave_linear_2 = torch.nn.Linear(bottleneck_dim, emb_dim)
+
+    def forward(self, *argv):
+        if len(argv) == 3:
+            x, edge_index, edge_attr = argv[0], argv[1], argv[2]
+        elif len(argv) == 1:
+            data = argv[0]
+            x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+        else:
+            raise ValueError("unmatched number of arguments.")
+
+        x = self.x_embedding1(x[:, 0]) + self.x_embedding2(x[:, 1])
+
+        h_list = [x]
+        for layer in range(self.num_layer):
+            h = h_list[layer]
+
+            h_mlp, x_aggr = self.gnns[layer](h, edge_index, edge_attr)
+
+            h = self.batch_norms[layer](h_mlp)
+
+            # if self.training:
+            delta = self.prompt_seq[layer](x_aggr)
+            h = h + delta * self.gating_0
+            delta = self.prompt_par[layer](x_aggr)
+            h = h + delta * self.gating_1
+            # else:
+            #     self.ave_linear_1.weight.data = (self.prompt_seq[layer][0].weight.data + self.prompt_par[layer][
+            #         0].weight.data) / 2
+            #     self.ave_linear_1.bias.data = (self.prompt_seq[layer][0].bias.data + self.prompt_par[layer][
+            #         0].bias.data) / 2
+            #     self.ave_linear_2.weight.data = (self.prompt_seq[layer][2].weight.data + self.prompt_par[layer][
+            #         2].weight.data) / 2
+            #     self.ave_linear_2.bias.data = (self.prompt_seq[layer][2].bias.data + self.prompt_par[layer][
+            #         2].bias.data) / 2
+            #     delta = self.ave_linear_1(x_aggr)
+            #     delta = self.prompt_seq[layer][1](delta)
+            #     delta = self.ave_linear_2(delta)
+            #     delta = self.prompt_seq[layer][3](delta)
+            #     h = h + delta * (self.gating_0+self.gating_1)
+
+            if layer < self.num_layer - 1:
+                h = F.relu(h)
+            h = F.dropout(h, self.drop_ratio, training=self.training)
+
+            h_list.append(h)
+
+        # Different implementations of Jk-concat
+        if self.JK == "concat":
+            node_representation = torch.cat(h_list, dim=1)
+        elif self.JK == "last":
+            node_representation = h_list[-1]
+        elif self.JK == "max":
+            h_list = [h.unsqueeze_(0) for h in h_list]
+            node_representation = torch.max(torch.cat(h_list, dim=0), dim=0)[0]
+        elif self.JK == "sum":
+            h_list = [h.unsqueeze_(0) for h in h_list]
+            node_representation = torch.sum(torch.cat(h_list, dim=0), dim=0)[0]
+
+        return node_representation
+
+
 class GNN_graphpred_gp(torch.nn.Module):
     """
     Extension of GIN to incorporate edge information by concatenation.
@@ -392,7 +523,7 @@ class GNN_graphpred_gp(torch.nn.Module):
         if self.num_layer < 2:
             raise ValueError("Number of GNN layers must be greater than 1.")
 
-        self.gnn = GNN_gp(num_layer, emb_dim, JK, drop_ratio, gnn_type=gnn_type)
+        self.gnn = GNN_gp_311(num_layer, emb_dim, JK, drop_ratio, gnn_type=gnn_type)
 
         # Different kind of graph pooling
         if graph_pooling == "sum":

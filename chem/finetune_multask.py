@@ -122,15 +122,14 @@ def main(runseed, dataset):
     # parser.add_argument('--dataset', type=str, default='muv')  # {0.0: 1332593, -1.0: 249397, 1.0: 489}
     # parser.add_argument('--dataset', type=str, default='toxcast')  # {-1.0: 1407009, 0.0: 3757732, 1.0: 126651}
 
-    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
-    # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
     # parser.add_argument('--input_model_file', type=str, default='')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/infomax.pth')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/edgepred.pth')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/contextpred.pth')
+    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+    # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
     parser.add_argument('--input_model_file', type=str, default='models_simgrace/simgrace_80.pth')
 
-    # parser.add_argument('--input_model_file', type=str, default='2_300.pth')
     parser.add_argument('--num_layer', type=int, default=5)
 
     parser.add_argument('--filename', type=str, default='', help='output filename')
@@ -206,15 +205,15 @@ def main(runseed, dataset):
     # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
 
     # gp
-    model_param_group = []
-    model_param_group.append({"params": model.gnn.prompt.parameters(), "lr": args.lr})
-    model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
-    for name, p in model.gnn.named_parameters():
-        if name.startswith('batch_norms'):
-            model_param_group.append({"params": p})
-        if 'mlp' in name and name.endswith('bias'):
-            model_param_group.append({"params": p})
-    model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
+    # model_param_group = []
+    # model_param_group.append({"params": model.gnn.prompt.parameters(), "lr": args.lr})
+    # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
+    # for name, p in model.gnn.named_parameters():
+    #     if name.startswith('batch_norms'):
+    #         model_param_group.append({"params": p})
+    #     if 'mlp' in name and name.endswith('bias'):
+    #         model_param_group.append({"params": p})
+    # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
 
     # reweight
     # model_param_group = []
@@ -237,6 +236,20 @@ def main(runseed, dataset):
     #     # if 'mlp' in name and name.endswith('bias'):
     #     #     model_param_group.append({"params": p})
     # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
+
+    # gp_311
+    model_param_group = []
+    model_param_group.append({"params": model.gnn.prompt_seq.parameters(), "lr": args.lr})
+    model_param_group.append({"params": model.gnn.prompt_par.parameters(), "lr": args.lr})
+    model_param_group.append({"params": model.gnn.gating_parameter_0, "lr": args.lr})
+    model_param_group.append({"params": model.gnn.gating_parameter_1, "lr": args.lr})
+    # model_param_group.append({"params": model.gnn.re_weight, "lr": args.lr})
+    for name, p in model.gnn.named_parameters():
+        if name.startswith('batch_norms'):
+            model_param_group.append({"params": p})
+        if 'mlp' in name and name.endswith('bias'):
+            model_param_group.append({"params": p})
+    model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
 
     optimizer = optim.Adam(model_param_group, lr=args.lr, weight_decay=args.decay)
 
