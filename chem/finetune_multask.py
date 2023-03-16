@@ -126,9 +126,9 @@ def main(runseed, dataset):
     # parser.add_argument('--input_model_file', type=str, default='model_gin/infomax.pth')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/edgepred.pth')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/contextpred.pth')
-    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
     # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
-    parser.add_argument('--input_model_file', type=str, default='models_simgrace/simgrace_80.pth')
+    # parser.add_argument('--input_model_file', type=str, default='models_simgrace/simgrace_80.pth')
 
     parser.add_argument('--num_layer', type=int, default=5)
 
@@ -239,11 +239,8 @@ def main(runseed, dataset):
 
     # gp_311
     model_param_group = []
-    model_param_group.append({"params": model.gnn.prompt_seq.parameters(), "lr": args.lr})
-    model_param_group.append({"params": model.gnn.prompt_par.parameters(), "lr": args.lr})
-    model_param_group.append({"params": model.gnn.gating_parameter_0, "lr": args.lr})
-    model_param_group.append({"params": model.gnn.gating_parameter_1, "lr": args.lr})
-    # model_param_group.append({"params": model.gnn.re_weight, "lr": args.lr})
+    model_param_group.append({"params": model.gnn.prompts.parameters(), "lr": args.lr})
+    model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
     for name, p in model.gnn.named_parameters():
         if name.startswith('batch_norms'):
             model_param_group.append({"params": p})
@@ -280,7 +277,8 @@ if __name__ == "__main__":
     overall = []
     quick_exp = ['bace', 'bbbp', 'clintox', 'sider', 'tox21', 'toxcast']
     full_exp = ['bace', 'bbbp', 'clintox', 'hiv', 'sider', 'tox21', 'muv', 'toxcast']
-    for dataset in quick_exp:
+    data_exp = ['muv']
+    for dataset in data_exp:
         total_acc = []
         repeat = 10
         for runseed in range(repeat):
