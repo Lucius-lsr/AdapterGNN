@@ -1,8 +1,6 @@
 import argparse
 import statistics
 
-from model_lora import GNN_graphpred_lora
-from model_reweight import GNN_graphpred_reweight
 from model_gp import GNN_graphpred_gp
 from loader import MoleculeDataset
 from torch_geometric.data import DataLoader
@@ -23,6 +21,8 @@ import pandas as pd
 
 import os
 import shutil
+
+import logging
 
 import warnings
 
@@ -123,10 +123,10 @@ def main(runseed, dataset):
     # parser.add_argument('--dataset', type=str, default='toxcast')  # {-1.0: 1407009, 0.0: 3757732, 1.0: 126651}
 
     # parser.add_argument('--input_model_file', type=str, default='')
-    # parser.add_argument('--input_model_file', type=str, default='model_gin/infomax.pth')
+    parser.add_argument('--input_model_file', type=str, default='model_gin/infomax.pth')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/edgepred.pth')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/contextpred.pth')
-    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
     # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
     # parser.add_argument('--input_model_file', type=str, default='models_simgrace/simgrace_80.pth')
 
@@ -139,7 +139,16 @@ def main(runseed, dataset):
     parser.add_argument('--split', type=str, default="scaffold", help="random or scaffold or random_scaffold")
     parser.add_argument('--eval_train', type=int, default=0, help='evaluating training or not')
     parser.add_argument('--num_workers', type=int, default=4, help='number of workers for dataset loading')
+    parser.add_argument('--log', type=str)
+
+    # parser.add_argument('--bottleneck_dim', type=int)
+    # parser.add_argument('--reserve', type=float)
+    parser.add_argument('--middle', type=float, default=2)
+    parser.add_argument('--scale', type=float, default=-1)
+
     args = parser.parse_args()
+
+    logging.basicConfig(format='%(message)s', level=logging.INFO, filename='log/{}.log'.format(args.log), filemode='a')
 
     torch.manual_seed(args.runseed)
     np.random.seed(args.runseed)
@@ -174,7 +183,7 @@ def main(runseed, dataset):
 
     if args.split == "scaffold":
         smiles_list = pd.read_csv('dataset/' + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
-        train_dataset, valid_dataset, test_dataset = scaffold_split_multask(dataset, smiles_list, null_value=0,
+        train_dataset, valid_dataset, test_dataset = scaffold_split_multask(args, dataset, smiles_list, null_value=0,
                                                                             frac_train=0.8,
                                                                             frac_valid=0.1, frac_test=0.1)
     elif args.split == "random":
@@ -193,60 +202,49 @@ def main(runseed, dataset):
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
     # set up model
-    model = GNN_graphpred_gp(args.num_layer, args.emb_dim, num_tasks, JK=args.JK, drop_ratio=args.dropout_ratio,
-                          graph_pooling=args.graph_pooling, gnn_type=args.gnn_type)
+    model = GNN_graphpred_gp(args, args.num_layer, args.emb_dim, num_tasks, JK=args.JK,
+                                 drop_ratio=args.dropout_ratio,
+                                 graph_pooling=args.graph_pooling, gnn_type=args.gnn_type)
     if not args.input_model_file == "":
         model.from_pretrained(args.input_model_file)
     model.to(device)
 
     # baseline
-    # model_param_group = []
-    # model_param_group.append({"params": model.gnn.parameters()})
-    # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
-
-    # gp
-    # model_param_group = []
-    # model_param_group.append({"params": model.gnn.prompt.parameters(), "lr": args.lr})
-    # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
-    # for name, p in model.gnn.named_parameters():
-    #     if name.startswith('batch_norms'):
-    #         model_param_group.append({"params": p})
-    #     if 'mlp' in name and name.endswith('bias'):
-    #         model_param_group.append({"params": p})
-    # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
-
-    # reweight
-    # model_param_group = []
-    # model_param_group.append({"params": model.gnn.reweights, "lr": args.lr})
-    # for name, p in model.gnn.named_parameters():
-    #     if name.startswith('batch_norms'):
-    #         model_param_group.append({"params": p})
-    #     elif not name.startswith('prompt') and name.endswith('bias'):
-    #         model_param_group.append({"params": p})
-    # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
-
-    # lora
-    # model_param_group = []
-    # for name, p in model.gnn.gnns.named_parameters():
-    #     if 'lora' in name or 'scale' in name or 'ia3' in name:
-    #         model_param_group.append({"params": p})
-    # for name, p in model.gnn.named_parameters():
-    #     if name.startswith('batch_norms'):
-    #         model_param_group.append({"params": p})
-    #     # if 'mlp' in name and name.endswith('bias'):
-    #     #     model_param_group.append({"params": p})
-    # model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
+    if type(model) is GNN_graphpred:
+        model_param_group = []
+        model_param_group.append({"params": model.gnn.parameters()})
+        model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
 
     # gp_311
-    model_param_group = []
-    model_param_group.append({"params": model.gnn.prompts.parameters(), "lr": args.lr})
-    model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
-    for name, p in model.gnn.named_parameters():
-        if name.startswith('batch_norms'):
-            model_param_group.append({"params": p})
-        if 'mlp' in name and name.endswith('bias'):
-            model_param_group.append({"params": p})
-    model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
+    if type(model) is GNN_graphpred_gp:
+        model_param_group = []
+        model_param_group.append({"params": model.gnn.prompts.parameters(), "lr": args.lr})
+        model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
+        for name, p in model.gnn.named_parameters():
+            if name.startswith('batch_norms'):
+                model_param_group.append({"params": p})
+            if 'mlp' in name and name.endswith('bias'):
+                model_param_group.append({"params": p})
+        model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
+
+    # # add
+    # if type(model) is GNN_graphpred_add:
+    #     model_param_group = []
+    #     model_param_group.append({"params": model.gnn.feature_add, "lr": args.lr})
+    #     for name, p in model.gnn.named_parameters():
+    #         if name.startswith('batch_norms'):
+    #             model_param_group.append({"params": p})
+    #     model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
+    #
+    # # prompt
+    # if type(model) is GNN_graphpred_prompt:
+    #     model_param_group = []
+    #     model_param_group.append({"params": model.gnn.virtual, "lr": args.lr})
+    #     model_param_group.append({"params": model.gnn.virtual_edge, "lr": args.lr})
+    #     for name, p in model.gnn.named_parameters():
+    #         if name.startswith('batch_norms'):
+    #             model_param_group.append({"params": p})
+    #     model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
 
     optimizer = optim.Adam(model_param_group, lr=args.lr, weight_decay=args.decay)
 
@@ -277,15 +275,14 @@ if __name__ == "__main__":
     overall = []
     quick_exp = ['bace', 'bbbp', 'clintox', 'sider', 'tox21', 'toxcast']
     full_exp = ['bace', 'bbbp', 'clintox', 'hiv', 'sider', 'tox21', 'muv', 'toxcast']
-    data_exp = ['muv']
-    for dataset in data_exp:
+
+    for dataset in ['clintox']:
         total_acc = []
         repeat = 10
         for runseed in range(repeat):
             acc = main(runseed, dataset)
             total_acc.append(acc)
             overall.append(acc)
-        print('{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc),
-                                                 100 * statistics.pstdev(total_acc)))
-    print()
-    print(100 * sum(overall) / len(overall))
+        logging.info('{:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc),
+                                            100 * statistics.pstdev(total_acc)))
+    logging.info('----------')

@@ -63,8 +63,8 @@ def species_split(dataset, train_valid_species_id_list=[3702, 6239, 511145,
 
     assert ((train_valid_byte_tensor + test_species_byte_tensor) == 1).all()
 
-    train_valid_dataset = dataset[train_valid_byte_tensor]
-    test_valid_dataset = dataset[test_species_byte_tensor]
+    train_valid_dataset = dataset[train_valid_byte_tensor==1]
+    test_valid_dataset = dataset[test_species_byte_tensor==1]
 
     return train_valid_dataset, test_valid_dataset
 

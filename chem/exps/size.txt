@@ -1,0 +1,10 @@
+python finetune_multask.py --reserve 0.001 --log size0001 --epochs 1000
+python finetune_multask.py --reserve 0.002 --log size0002 --epochs 1000
+python finetune_multask.py --reserve 0.003 --log size0003 --epochs 1000
+python finetune_multask.py --reserve 0.004 --log size0004 --epochs 1000
+python finetune_multask.py --reserve 0.005 --log size0005 --epochs 1000
+python finetune_multask.py --reserve 0.006 --log size0006 --epochs 1000
+python finetune_multask.py --reserve 0.007 --log size0007 --epochs 1000
+python finetune_multask.py --reserve 0.008 --log size0008 --epochs 1000
+python finetune_multask.py --reserve 0.009 --log size0009 --epochs 1000
+python finetune_multask.py --reserve 0.01 --log size001 --epochs 1000

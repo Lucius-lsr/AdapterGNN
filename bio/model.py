@@ -49,7 +49,8 @@ class GINConv(MessagePassing):
         if self.input_layer:
             x = self.input_node_embeddings(x.to(torch.int64).view(-1,))
 
-        return self.propagate(self.aggr, edge_index, x=x, edge_attr=edge_embeddings)
+        # return self.propagate(self.aggr, edge_index, x=x, edge_attr=edge_embeddings)
+        return self.propagate(edge_index[0], x=x, edge_attr=edge_embeddings)
 
     def message(self, x_j, edge_attr):
         return torch.cat([x_j, edge_attr], dim = 1)
@@ -273,6 +274,8 @@ class GNN(torch.nn.Module):
     def forward(self, x, edge_index, edge_attr):
         h_list = [x]
         for layer in range(self.num_layer):
+            print(h_list[layer].shape)
+            exit()
             h = self.gnns[layer](h_list[layer], edge_index, edge_attr)
             if layer == self.num_layer - 1:
                 #remove relu from the last layer

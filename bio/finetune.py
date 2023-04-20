@@ -12,7 +12,8 @@ import torch.optim as optim
 from tqdm import tqdm
 import numpy as np
 
-from model import GNN, GNN_graphpred
+from model import GNN_graphpred
+from model_gp import GNN_graphpred_gp
 from sklearn.metrics import roc_auc_score
 
 import pandas as pd
@@ -20,12 +21,15 @@ import pandas as pd
 import os
 import pickle
 
+import logging
+import statistics
+
 criterion = nn.BCEWithLogitsLoss()
 
 def train(args, model, device, loader, optimizer):
     model.train()
 
-    for step, batch in enumerate(tqdm(loader, desc="Iteration")):
+    for step, batch in enumerate(loader):
         batch = batch.to(device)
         pred = model(batch)
         y = batch.go_target_downstream.view(pred.shape).to(torch.float64)
@@ -42,7 +46,7 @@ def eval(args, model, device, loader):
     y_true = []
     y_scores = []
 
-    for step, batch in enumerate(tqdm(loader, desc="Iteration")):
+    for step, batch in enumerate(loader):
         batch = batch.to(device)
 
         with torch.no_grad():
@@ -62,9 +66,9 @@ def eval(args, model, device, loader):
         else:
             roc_list.append(np.nan)
 
-    return np.array(roc_list) #y_true.shape[1]
+    return sum(roc_list)/len(roc_list)
 
-def main():
+def main(runseed):
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch implementation of pre-training of graph neural networks')
     parser.add_argument('--device', type=int, default=0,
@@ -91,11 +95,15 @@ def main():
     parser.add_argument('--filename', type=str, default = '', help='output filename')
     parser.add_argument('--gnn_type', type=str, default="gin")
     parser.add_argument('--seed', type=int, default=42, help = "Seed for splitting dataset.")
-    parser.add_argument('--runseed', type=int, default=0, help = "Seed for running experiments.")
+    parser.add_argument('--runseed', type=int, default=runseed, help = "Seed for running experiments.")
     parser.add_argument('--num_workers', type=int, default = 0, help='number of workers for dataset loading')
     parser.add_argument('--eval_train', type=int, default = 0, help='evaluating training or not')
     parser.add_argument('--split', type=str, default = "species", help='Random or species split')
+    parser.add_argument('--log', type=str)
+    
     args = parser.parse_args()
+
+    logging.basicConfig(format='%(message)s',level=logging.INFO,filename='log/{}.log'.format(args.log),filemode='a')
 
     torch.manual_seed(args.runseed)
     np.random.seed(args.runseed)
@@ -109,14 +117,6 @@ def main():
     dataset = BioDataset(root_supervised, data_type='supervised')
 
     print(dataset)
-
-    node_num = 0
-    edge_num = 0
-    for d in dataset:
-        node_num += d.x.size()[0]
-        edge_num += d.edge_index.size()[1]
-    print(node_num / len(dataset))
-    print(edge_num / len(dataset))
 
     if args.split == "random":
         print("random splitting")
@@ -137,38 +137,50 @@ def main():
     else:
         ### for species splitting
         test_easy_loader = DataLoaderFinetune(test_dataset_broad, batch_size=10*args.batch_size, shuffle=False, num_workers = args.num_workers)
-        test_hard_loader = DataLoaderFinetune(test_dataset_none, batch_size=10*args.batch_size, shuffle=False, num_workers = args.num_workers)
+        # test_hard_loader = DataLoaderFinetune(test_dataset_none, batch_size=10*args.batch_size, shuffle=False, num_workers = args.num_workers)
 
     num_tasks = len(dataset[0].go_target_downstream)
 
     print(train_dataset[0])
 
     #set up model
-    model = GNN_graphpred(args.num_layer, args.emb_dim, num_tasks, JK = args.JK, drop_ratio = args.dropout_ratio, graph_pooling = args.graph_pooling, gnn_type = args.gnn_type)
+    model = GNN_graphpred_gp(args, args.num_layer, args.emb_dim, num_tasks, JK = args.JK, drop_ratio = args.dropout_ratio, graph_pooling = args.graph_pooling, gnn_type = args.gnn_type)
 
     if not args.model_file == "":
         model.from_pretrained(args.model_file)
     
     model.to(device)
 
-    #set up optimizer
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.decay)
+    # baseline
+    if type(model) is GNN_graphpred:
+        model_param_group = []
+        model_param_group.append({"params": model.gnn.parameters()})
+        model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
 
-    train_acc_list = []
-    val_acc_list = []
-    
-    ### for random splitting
-    test_acc_list = []
-    
-    ### for species splitting
-    test_acc_easy_list = []
-    test_acc_hard_list = []
+    # gp
+    if type(model) is GNN_graphpred_gp:
+        model_param_group = []
+        model_param_group.append({"params": model.gnn.prompts.parameters(), "lr": args.lr})
+        model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
+        for name, p in model.gnn.named_parameters():
+            if name.startswith('batch_norms'):
+                model_param_group.append({"params": p})
+            if 'mlp' in name and name.endswith('bias'):
+                model_param_group.append({"params": p})
+        model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
+
+    #set up optimizer
+    optimizer = optim.Adam(model_param_group, lr=args.lr, weight_decay=args.decay)
+
+    best_val = 0
+    select_acc_easy = 0
 
 
     if not args.filename == "":
         if os.path.exists(args.filename):
             print("removed existing file!!")
             os.remove(args.filename)
+
 
     for epoch in range(1, args.epochs+1):
         print("====epoch " + str(epoch))
@@ -181,29 +193,25 @@ def main():
         else:
             train_acc = 0
             print("ommitting training evaluation")
+
         val_acc = eval(args, model, device, val_loader)
+        test_acc_easy = eval(args, model, device, test_easy_loader)
 
-        val_acc_list.append(np.mean(val_acc))
-        train_acc_list.append(train_acc)
-
-        if args.split == "random":
-            test_acc = eval(args, model, device, test_loader)
-            test_acc_list.append(test_acc)
+        if val_acc > best_val:
+            logging.info('{:.2f} {:.2f} ---'.format(100*val_acc, 100*test_acc_easy))
+            best_val = val_acc
+            select_acc_easy = test_acc_easy
         else:
-            test_acc_easy = eval(args, model, device, test_easy_loader)
-            test_acc_hard = eval(args, model, device, test_hard_loader)
-            test_acc_easy_list.append(np.mean(test_acc_easy))
-            test_acc_hard_list.append(np.mean(test_acc_hard))
-            print(val_acc_list[-1])
-            print(test_acc_easy_list[-1])
-            print(test_acc_hard_list[-1])
-
-        print("")
-
-    with open('result.log', 'a+') as f:
-        f.write(str(args.runseed) + ' ' + str(np.array(test_acc_easy_list)[np.array(val_acc_list).argmax()]) + ' ' + str(np.array(test_acc_hard_list)[np.array(val_acc_list).argmax()]))
-        f.write('\n')
+            logging.info('{:.2f} {:.2f}'.format(100*val_acc, 100*test_acc_easy))
+        
+    return select_acc_easy
 
 
 if __name__ == "__main__":
-    main()
+    
+    total_acc = []
+    repeat = 10
+    for runseed in range(repeat):
+        acc = main(runseed)
+        total_acc.append(acc)
+    logging.info('easy: {:.2f}±{:.2f}'.format(100 * sum(total_acc) / len(total_acc), 100 * statistics.pstdev(total_acc)))

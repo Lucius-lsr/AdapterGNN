@@ -28,7 +28,7 @@ def generate_scaffold(smiles, include_chirality=False):
 # scaffold = generate_scaffold(s)
 # assert scaffold == 'c1ccc(Oc2ccccn2)cc1'
 
-def scaffold_split_multask(dataset, smiles_list, task_idx=None, null_value=0,
+def scaffold_split_multask(args, dataset, smiles_list, task_idx=None, null_value=0,
                    frac_train=0.8, frac_valid=0.1, frac_test=0.1,
                    return_smiles=False):
     """
