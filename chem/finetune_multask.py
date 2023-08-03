@@ -116,17 +116,17 @@ def main(runseed, dataset):
     # parser.add_argument('--dataset', type=str, default='bace')
     # parser.add_argument('--dataset', type=str, default='bbbp')
     # parser.add_argument('--dataset', type=str, default='clintox')
-    # parser.add_argument('--dataset', type=str, default='hiv')
+    # parser.add_argument('--dataset', type=str, default='hiv')  # omit
     # parser.add_argument('--dataset', type=str, default='sider')
     # parser.add_argument('--dataset', type=str, default='tox21')  # {-1.0: 72084, 1.0: 5862, 0.0: 16026}
-    # parser.add_argument('--dataset', type=str, default='muv')  # {0.0: 1332593, -1.0: 249397, 1.0: 489}
+    # parser.add_argument('--dataset', type=str, default='muv')  # omit {0.0: 1332593, -1.0: 249397, 1.0: 489}
     # parser.add_argument('--dataset', type=str, default='toxcast')  # {-1.0: 1407009, 0.0: 3757732, 1.0: 126651}
 
     # parser.add_argument('--input_model_file', type=str, default='')
-    parser.add_argument('--input_model_file', type=str, default='model_gin/infomax.pth')
+    # parser.add_argument('--input_model_file', type=str, default='model_gin/infomax.pth')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/edgepred.pth')
     # parser.add_argument('--input_model_file', type=str, default='model_gin/contextpred.pth')
-    # parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
+    parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
     # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
     # parser.add_argument('--input_model_file', type=str, default='models_simgrace/simgrace_80.pth')
 
@@ -179,10 +179,11 @@ def main(runseed, dataset):
         raise ValueError("Invalid dataset name.")
 
     # set up dataset
-    dataset = MoleculeDataset("dataset/" + args.dataset, dataset=args.dataset)
+    dataset_root = "../../MoleGraphPrompt/chem/dataset/"
+    dataset = MoleculeDataset(dataset_root + args.dataset, dataset=args.dataset)
 
     if args.split == "scaffold":
-        smiles_list = pd.read_csv('dataset/' + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
+        smiles_list = pd.read_csv(dataset_root + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
         train_dataset, valid_dataset, test_dataset = scaffold_split_multask(args, dataset, smiles_list, null_value=0,
                                                                             frac_train=0.8,
                                                                             frac_valid=0.1, frac_test=0.1)
@@ -190,7 +191,7 @@ def main(runseed, dataset):
         train_dataset, valid_dataset, test_dataset = random_split(dataset, null_value=0, frac_train=0.8, frac_valid=0.1,
                                                                   frac_test=0.1, seed=args.seed)
     elif args.split == "random_scaffold":
-        smiles_list = pd.read_csv('dataset/' + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
+        smiles_list = pd.read_csv(dataset_root + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
         train_dataset, valid_dataset, test_dataset = random_scaffold_split(dataset, smiles_list, null_value=0,
                                                                            frac_train=0.8, frac_valid=0.1,
                                                                            frac_test=0.1, seed=args.seed)
@@ -219,7 +220,7 @@ def main(runseed, dataset):
     if type(model) is GNN_graphpred_gp:
         model_param_group = []
         model_param_group.append({"params": model.gnn.prompts.parameters(), "lr": args.lr})
-        model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
+        # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
         for name, p in model.gnn.named_parameters():
             if name.startswith('batch_norms'):
                 model_param_group.append({"params": p})
@@ -276,7 +277,7 @@ if __name__ == "__main__":
     quick_exp = ['bace', 'bbbp', 'clintox', 'sider', 'tox21', 'toxcast']
     full_exp = ['bace', 'bbbp', 'clintox', 'hiv', 'sider', 'tox21', 'muv', 'toxcast']
 
-    for dataset in ['clintox']:
+    for dataset in quick_exp:
         total_acc = []
         repeat = 10
         for runseed in range(repeat):

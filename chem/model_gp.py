@@ -25,11 +25,11 @@ class GINConv(MessagePassing):
     See https://arxiv.org/abs/1810.00826
     """
 
-    def __init__(self, emb_dim, middle, aggr="add"):
+    def __init__(self, emb_dim, aggr="add"):
         super(GINConv, self).__init__(aggr)
         # multi-layer perceptron
-        self.mlp = torch.nn.Sequential(torch.nn.Linear(emb_dim, int(middle * emb_dim)), torch.nn.ReLU(),
-                                       torch.nn.Linear(int(middle * emb_dim), emb_dim))
+        self.mlp = torch.nn.Sequential(torch.nn.Linear(emb_dim, 2 * emb_dim), torch.nn.ReLU(),
+                                       torch.nn.Linear(2 * emb_dim, emb_dim))
         self.edge_embedding1 = torch.nn.Embedding(num_bond_type, emb_dim)
         self.edge_embedding2 = torch.nn.Embedding(num_bond_direction, emb_dim)
 
@@ -384,7 +384,7 @@ class GNN_gp_311(torch.nn.Module):
         self.gnns = torch.nn.ModuleList()
         for layer in range(num_layer):
             if gnn_type == "gin":
-                self.gnns.append(GINConv(emb_dim, args.middle, aggr="add"))
+                self.gnns.append(GINConv(emb_dim, aggr="add"))
             elif gnn_type == "gcn":
                 self.gnns.append(GCNConv(emb_dim))
             elif gnn_type == "gat":
@@ -393,18 +393,18 @@ class GNN_gp_311(torch.nn.Module):
                 self.gnns.append(GraphSAGEConv(emb_dim))
 
         bottleneck_dim = 15
-        prompt_num = 2
+        prompt_num = 1
 
-        if args.scale == -1:
-            gating = 0.01
-            self.gating_parameter = torch.nn.Parameter(torch.zeros(prompt_num, num_layer, 1))
-            self.gating_parameter.data += gating
-            self.register_parameter('gating_parameter', self.gating_parameter)
-            self.gating = self.gating_parameter
-        else:
-            self.gating_parameter = torch.nn.Parameter(torch.zeros(prompt_num, num_layer, 1))
-            self.gating_parameter.data += args.scale
-            self.gating = self.gating_parameter
+        # if args.scale == -1:
+        #     gating = 0.01
+        #     self.gating_parameter = torch.nn.Parameter(torch.zeros(prompt_num, num_layer, 1))
+        #     self.gating_parameter.data += gating
+        #     self.register_parameter('gating_parameter', self.gating_parameter)
+        #     self.gating = self.gating_parameter
+        # else:
+        #     self.gating_parameter = torch.nn.Parameter(torch.zeros(prompt_num, num_layer, 1))
+        #     self.gating_parameter.data += args.scale
+        #     self.gating = self.gating_parameter
 
         self.batch_norms = torch.nn.ModuleList()
         self.prompts = torch.nn.ModuleList()
@@ -419,7 +419,7 @@ class GNN_gp_311(torch.nn.Module):
                         torch.nn.Linear(emb_dim, bottleneck_dim),
                         torch.nn.ReLU(),
                         torch.nn.Linear(bottleneck_dim, emb_dim),
-                        torch.nn.BatchNorm1d(emb_dim)
+                        # torch.nn.BatchNorm1d(emb_dim)
                     ))
                     torch.nn.init.zeros_(self.prompts[i][-1][2].weight.data)
                     torch.nn.init.zeros_(self.prompts[i][-1][2].bias.data)
@@ -445,10 +445,12 @@ class GNN_gp_311(torch.nn.Module):
 
             h = self.batch_norms[layer](h_mlp)
 
-            delta = self.prompts[0][layer](h_list[layer])
-            h = h + delta * self.gating[0][layer]
-            delta = self.prompts[1][layer](x_aggr)
-            h = h + delta * self.gating[1][layer]
+            # delta = self.prompts[0][layer](h_list[layer])
+            # h = h + delta * self.gating[0][layer]
+            # delta = self.prompts[1][layer](x_aggr)
+            # h = h + delta * self.gating[1][layer]
+            delta = self.prompts[0][layer](x_aggr)
+            h = h + delta
 
             if layer < self.num_layer - 1:
                 h = F.relu(h)

@@ -27,6 +27,7 @@ import shutil
 from tensorboardX import SummaryWriter
 
 from rdkit import RDLogger
+from tqdm import tqdm
 
 from utils import report
 
@@ -65,16 +66,16 @@ def main(runseed, gating):
     # parser.add_argument('--dataset', type=str, default='bace')
     # parser.add_argument('--dataset', type=str, default='bbbp')
     # parser.add_argument('--dataset', type=str, default='clintox')
-    # parser.add_argument('--dataset', type=str, default='hiv')
+    # parser.add_argument('--dataset', type=str, default='hiv')  # omit
     # parser.add_argument('--dataset', type=str, default='sider')
-    parser.add_argument('--dataset', type=str, default='tox21')
-    # parser.add_argument('--dataset', type=str, default='muv')
-    # parser.add_argument('--dataset', type=str, default='toxcast')
+    # parser.add_argument('--dataset', type=str, default='tox21')
+    # parser.add_argument('--dataset', type=str, default='muv')  # omit
+    parser.add_argument('--dataset', type=str, default='toxcast')
 
     parser.add_argument('--input_model_file', type=str, default='model_gin/masking.pth')
     # parser.add_argument('--input_model_file', type=str, default='models_graphcl/graphcl_80.pth')
 
-    parser.add_argument('--setting', type=int, default=5)
+    # parser.add_argument('--setting', type=int, default=5)
 
     parser.add_argument('--filename', type=str, default='', help='output filename')
     parser.add_argument('--seed', type=int, default=42, help="Seed for splitting the dataset.")
@@ -83,7 +84,7 @@ def main(runseed, gating):
     parser.add_argument('--split', type=str, default="scaffold", help="random or scaffold or random_scaffold")
     parser.add_argument('--eval_train', type=int, default=0, help='evaluating training or not')
     parser.add_argument('--num_workers', type=int, default=4, help='number of workers for dataset loading')
-    parser.add_argument('--gating', type=float, default=gating)
+    # parser.add_argument('--gating', type=float, default=gating)
 
     args = parser.parse_args()
 
@@ -144,13 +145,14 @@ def main(runseed, gating):
         raise ValueError("Invalid dataset name.")
 
     # set up dataset
-    dataset = MoleculeDataset("dataset/" + args.dataset, dataset=args.dataset)
+    dataset_root = "../../MoleGraphPrompt/chem/dataset/"
+    dataset = MoleculeDataset(dataset_root + args.dataset, dataset=args.dataset)
     # print(dataset)
 
     assoc_test_acc_list = []
     for target in range(num_tasks):
         if args.split == "scaffold":
-            smiles_list = pd.read_csv('dataset/' + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
+            smiles_list = pd.read_csv(dataset_root + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
             train_dataset, valid_dataset, test_dataset = scaffold_split(dataset, smiles_list, task_idx=target,
                                                                         null_value=np.nan, frac_train=0.8,
                                                                         frac_valid=0.1, frac_test=0.1)
@@ -161,7 +163,7 @@ def main(runseed, gating):
                                                                       seed=args.seed)
             # print("random")
         elif args.split == "random_scaffold":
-            smiles_list = pd.read_csv('dataset/' + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
+            smiles_list = pd.read_csv(dataset_root + args.dataset + '/processed/smiles.csv', header=None)[0].tolist()
             train_dataset, valid_dataset, test_dataset = random_scaffold_split(dataset, smiles_list, task_idx=target,
                                                                                null_value=np.nan, frac_train=0.8,
                                                                                frac_valid=0.1, frac_test=0.1,
@@ -179,9 +181,8 @@ def main(runseed, gating):
         test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
         # set up model
-        model = GNN_graphpred_gp(args.num_layer, args.emb_dim, JK=args.JK, drop_ratio=args.dropout_ratio,
-                                 graph_pooling=args.graph_pooling, gnn_type=args.gnn_type, setting=args.setting,
-                                 gating=args.gating, gating_m=0)
+        model = GNN_graphpred_gp(args, args.num_layer, args.emb_dim, JK=args.JK, drop_ratio=args.dropout_ratio,
+                                 graph_pooling=args.graph_pooling, gnn_type=args.gnn_type)
         if not args.input_model_file == "":
             model.from_pretrained(args.input_model_file)
 
@@ -191,9 +192,9 @@ def main(runseed, gating):
         # different learning rate for different part of GNN
         model_param_group = []
         # model_param_group.append({"params": model.gnn.parameters()})
-        model_param_group.append({"params": model.gnn.prompt.parameters(), "lr": args.lr})
+        model_param_group.append({"params": model.gnn.prompts.parameters(), "lr": args.lr})
 
-        model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
+        # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
 
         # tunable batchnorm and bias
         for name, p in model.gnn.named_parameters():
@@ -219,7 +220,7 @@ def main(runseed, gating):
         best_val_acc = -1
         assoc_test_acc = -1
 
-        for epoch in range(1, args.epochs + 1):
+        for epoch in tqdm(range(1, args.epochs + 1)):
             # print("====epoch " + str(epoch))
 
             train(args, target, model, device, train_loader, optimizer)
@@ -265,7 +266,7 @@ def main(runseed, gating):
 if __name__ == "__main__":
     for gating in [0]:
         total_acc = []
-        repeat = 10
+        repeat = 5
         for runseed in range(repeat):
             accs = main(runseed, gating)
             total_acc += accs
