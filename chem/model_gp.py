@@ -392,7 +392,7 @@ class GNN_gp_311(torch.nn.Module):
             elif gnn_type == "graphsage":
                 self.gnns.append(GraphSAGEConv(emb_dim))
 
-        bottleneck_dim = 15
+        bottleneck_dim = 30
         prompt_num = 1
 
         # if args.scale == -1:
