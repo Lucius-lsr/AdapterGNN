@@ -392,19 +392,19 @@ class GNN_gp_311(torch.nn.Module):
             elif gnn_type == "graphsage":
                 self.gnns.append(GraphSAGEConv(emb_dim))
 
-        bottleneck_dim = 30
-        prompt_num = 1
+        bottleneck_dim = 15
+        prompt_num = 2
 
-        # if args.scale == -1:
-        #     gating = 0.01
-        #     self.gating_parameter = torch.nn.Parameter(torch.zeros(prompt_num, num_layer, 1))
-        #     self.gating_parameter.data += gating
-        #     self.register_parameter('gating_parameter', self.gating_parameter)
-        #     self.gating = self.gating_parameter
-        # else:
-        #     self.gating_parameter = torch.nn.Parameter(torch.zeros(prompt_num, num_layer, 1))
-        #     self.gating_parameter.data += args.scale
-        #     self.gating = self.gating_parameter
+        if args.scale == -1:
+            gating = 0.01
+            self.gating_parameter = torch.nn.Parameter(torch.zeros(prompt_num, num_layer, 1))
+            self.gating_parameter.data += gating
+            self.register_parameter('gating_parameter', self.gating_parameter)
+            self.gating = self.gating_parameter
+        else:
+            self.gating_parameter = torch.nn.Parameter(torch.zeros(prompt_num, num_layer, 1))
+            self.gating_parameter.data += args.scale
+            self.gating = self.gating_parameter
 
         self.batch_norms = torch.nn.ModuleList()
         self.prompts = torch.nn.ModuleList()
@@ -445,12 +445,10 @@ class GNN_gp_311(torch.nn.Module):
 
             h = self.batch_norms[layer](h_mlp)
 
-            # delta = self.prompts[0][layer](h_list[layer])
-            # h = h + delta * self.gating[0][layer]
-            # delta = self.prompts[1][layer](x_aggr)
-            # h = h + delta * self.gating[1][layer]
-            delta = self.prompts[0][layer](x_aggr)
-            h = h + delta
+            delta = self.prompts[0][layer](h_list[layer])
+            h = h + delta * self.gating[0][layer]
+            delta = self.prompts[1][layer](x_aggr)
+            h = h + delta * self.gating[1][layer]
 
             if layer < self.num_layer - 1:
                 h = F.relu(h)

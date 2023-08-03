@@ -220,7 +220,7 @@ def main(runseed, dataset):
     if type(model) is GNN_graphpred_gp:
         model_param_group = []
         model_param_group.append({"params": model.gnn.prompts.parameters(), "lr": args.lr})
-        # model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
+        model_param_group.append({"params": model.gnn.gating_parameter, "lr": args.lr})
         for name, p in model.gnn.named_parameters():
             if name.startswith('batch_norms'):
                 model_param_group.append({"params": p})
