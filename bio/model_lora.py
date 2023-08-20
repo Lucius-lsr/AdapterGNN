@@ -19,7 +19,7 @@ class GINConv(MessagePassing):
     See https://arxiv.org/abs/1810.00826
     """
     def __init__(self, emb_dim, aggr = "add", input_layer = False):
-        super(GINConv, self).__init__(aggr)
+        super(GINConv, self).__init__()
         # multi-layer perceptron
         self.mlp = torch.nn.Sequential(torch.nn.Linear(2*emb_dim, 2*emb_dim), torch.nn.BatchNorm1d(2*emb_dim), torch.nn.ReLU(), torch.nn.Linear(2*emb_dim, emb_dim))
 
@@ -32,8 +32,17 @@ class GINConv(MessagePassing):
             self.input_node_embeddings = torch.nn.Embedding(2, emb_dim)
             torch.nn.init.xavier_uniform_(self.input_node_embeddings.weight.data)
 
-        self.embeded_x = None
-        self.aggr_x = None
+        self.aggr = aggr
+
+        hidden_dim = 11
+        self.lora_2 = torch.nn.Sequential(torch.nn.Linear(2 * emb_dim, hidden_dim),
+                                          torch.nn.Linear(hidden_dim, emb_dim))
+        torch.nn.init.zeros_(self.lora_2[-1].weight.data)
+        torch.nn.init.zeros_(self.lora_2[-1].bias.data)
+        self.lora_1 = torch.nn.Sequential(torch.nn.Linear(2 * emb_dim, hidden_dim),
+                                          torch.nn.Linear(hidden_dim, 2 * emb_dim))
+        torch.nn.init.zeros_(self.lora_1[-1].weight.data)
+        torch.nn.init.zeros_(self.lora_1[-1].bias.data)
 
     def forward(self, x, edge_index, edge_attr):
         #add self loops in the edge space
@@ -50,14 +59,24 @@ class GINConv(MessagePassing):
         if self.input_layer:
             x = self.input_node_embeddings(x.to(torch.int64).view(-1,))
 
-        return self.propagate(edge_index[0], x=x, edge_attr=edge_embeddings), x, self.aggr_x # x is node embedding. aggr_x has edge information
+        # return self.propagate(self.aggr, edge_index, x=x, edge_attr=edge_embeddings)
+        return self.propagate(edge_index[0], x=x, edge_attr=edge_embeddings)
 
     def message(self, x_j, edge_attr):
         return torch.cat([x_j, edge_attr], dim = 1)
 
     def update(self, aggr_out):
-        self.aggr_x = aggr_out
-        return self.mlp(aggr_out)
+        x = aggr_out
+        h = self.delta_tune(self.mlp[0], self.lora_1, x)
+        a_h = self.mlp[1](h)
+        out = self.delta_tune(self.mlp[-1], self.lora_2, a_h)
+        return out
+
+    def delta_tune(self, linear, lora, x):
+        m_x = x
+        h = linear(m_x)
+        h = h + lora(x)
+        return h
 
 
 class GCNConv(MessagePassing):
@@ -245,7 +264,7 @@ class GNN(torch.nn.Module):
         node representations
 
     """
-    def __init__(self, args, num_layer, emb_dim, JK = "last", drop_ratio = 0, gnn_type = "gin"):
+    def __init__(self, num_layer, emb_dim, JK = "last", drop_ratio = 0, gnn_type = "gin"):
         super(GNN, self).__init__()
         self.num_layer = num_layer
         self.drop_ratio = drop_ratio
@@ -271,55 +290,16 @@ class GNN(torch.nn.Module):
             elif gnn_type == "graphsage":
                 self.gnns.append(GraphSAGEConv(emb_dim, input_layer = input_layer))
 
-        bottleneck_dim = 15
-        prompt_num = 2
-
-        gating = 0.01
-        self.gating_parameter = torch.nn.Parameter(torch.zeros(prompt_num, num_layer, 1))
-        self.gating_parameter.data += gating
-        self.register_parameter('gating_parameter', self.gating_parameter)
-        self.gating = self.gating_parameter
-
-        self.prompts = torch.nn.ModuleList()
-        for i in range(prompt_num):
-            self.prompts.append(torch.nn.ModuleList())
-
-        for layer in range(num_layer):
-            for i in range(prompt_num):
-                if bottleneck_dim > 0:
-                    self.prompts[i].append(torch.nn.Sequential(
-                        torch.nn.Linear(2 * emb_dim if i>0 else emb_dim, bottleneck_dim),
-                        # torch.nn.Linear(2 * emb_dim, bottleneck_dim),
-                        torch.nn.ReLU(),
-                        torch.nn.Linear(bottleneck_dim, emb_dim),
-                        # torch.nn.BatchNorm1d(emb_dim)
-                    ))
-                    torch.nn.init.zeros_(self.prompts[i][-1][2].weight.data)
-                    torch.nn.init.zeros_(self.prompts[i][-1][2].bias.data)
-                else:
-                    self.prompts[i].append(torch.nn.BatchNorm1d(emb_dim))
-
     #def forward(self, x, edge_index, edge_attr):
     def forward(self, x, edge_index, edge_attr):
         h_list = [x]
         for layer in range(self.num_layer):
-            h = h_list[layer]
-
-            h, x_embeded, x_aggr = self.gnns[layer](h, edge_index, edge_attr)
-
-            # par adapter baseline
-            # h = h + self.prompts[0][layer](x_aggr)
-
-            # adaptergnn
-            delta = self.prompts[0][layer](x_embeded)
-            h = h + delta * self.gating[0][layer]
-            delta = self.prompts[1][layer](x_aggr)
-            h = h + delta * self.gating[1][layer]
-
-            if layer < self.num_layer - 1:
-                h = F.relu(h)
-            h = F.dropout(h, self.drop_ratio, training=self.training)
-
+            h = self.gnns[layer](h_list[layer], edge_index, edge_attr)
+            if layer == self.num_layer - 1:
+                #remove relu from the last layer
+                h = F.dropout(h, self.drop_ratio, training = self.training)
+            else:
+                h = F.dropout(F.relu(h), self.drop_ratio, training = self.training)
             h_list.append(h)
 
         if self.JK == "last":
@@ -331,7 +311,7 @@ class GNN(torch.nn.Module):
         return node_representation
 
 
-class GNN_graphpred_gp(torch.nn.Module):
+class GNN_graphpred_lora(torch.nn.Module):
     """
     Extension of GIN to incorporate edge information by concatenation.
 
@@ -347,7 +327,7 @@ class GNN_graphpred_gp(torch.nn.Module):
     JK-net: https://arxiv.org/abs/1806.03536
     """
     def __init__(self, args, num_layer, emb_dim, num_tasks, JK = "last", drop_ratio = 0, graph_pooling = "mean", gnn_type = "gin"):
-        super(GNN_graphpred_gp, self).__init__()
+        super(GNN_graphpred_lora, self).__init__()
         self.num_layer = num_layer
         self.drop_ratio = drop_ratio
         self.JK = JK
@@ -357,7 +337,7 @@ class GNN_graphpred_gp(torch.nn.Module):
         if self.num_layer < 2:
             raise ValueError("Number of GNN layers must be greater than 1.")
 
-        self.gnn = GNN(args, num_layer, emb_dim, JK, drop_ratio, gnn_type = gnn_type)
+        self.gnn = GNN(num_layer, emb_dim, JK, drop_ratio, gnn_type = gnn_type)
 
         #Different kind of graph pooling
         if graph_pooling == "sum":
@@ -389,19 +369,6 @@ class GNN_graphpred_gp(torch.nn.Module):
 
 
 if __name__ == "__main__":
-    # count parameters of the model GNN_graphpred_gp
-    args = None
-    num_layer = 5
-    emb_dim = 300
-    num_tasks = 1
-    JK = "last"
-    drop_ratio = 0
-    graph_pooling = "mean"
-    gnn_type = "gin"
-    model = GNN_graphpred_gp(args, num_layer, emb_dim, num_tasks, JK, drop_ratio, graph_pooling, gnn_type)
-    print(model)
-    print("Number of parameters: {}".format(sum(p.numel() for p in model.gnn.parameters())))
-
     pass
 
 

@@ -40,8 +40,8 @@ class GINConv(MessagePassing):
         self.w1 = True
         self.w2 = True
         self.use_lora = True
-        self.use_ia3 = True
-        hidden_dim = 10
+        self.use_ia3 = False
+        hidden_dim = 5
 
         self.ia3_1, self.lora_1, self.scale_1 = None, None, None
         self.ia3_2, self.lora_2, self.scale_2 = None, None, None
@@ -51,9 +51,9 @@ class GINConv(MessagePassing):
                                                 torch.nn.Linear(hidden_dim, emb_dim))
                 torch.nn.init.zeros_(self.lora_2[-1].weight.data)
                 torch.nn.init.zeros_(self.lora_2[-1].bias.data)
-                self.scale_2 = torch.nn.Parameter(torch.zeros(1))
-                self.scale_2.data += 0.01
-                self.register_parameter('scale_2', self.scale_2)
+                # self.scale_2 = torch.nn.Parameter(torch.zeros(1))
+                # self.scale_2.data += 0.01
+                # self.register_parameter('scale_2', self.scale_2)
             if self.use_ia3:
                 self.ia3_2 = torch.nn.Parameter(torch.ones(2 * emb_dim))
                 self.register_parameter('ia3_2', self.ia3_2)
@@ -63,9 +63,9 @@ class GINConv(MessagePassing):
                                                 torch.nn.Linear(hidden_dim, 2 * emb_dim))
                 torch.nn.init.zeros_(self.lora_1[-1].weight.data)
                 torch.nn.init.zeros_(self.lora_1[-1].bias.data)
-                self.scale_1 = torch.nn.Parameter(torch.zeros(1))
-                self.scale_1.data += 0.01
-                self.register_parameter('scale_1', self.scale_1)
+                # self.scale_1 = torch.nn.Parameter(torch.zeros(1))
+                # self.scale_1.data += 0.01
+                # self.register_parameter('scale_1', self.scale_1)
             if self.use_ia3:
                 self.ia3_1 = torch.nn.Parameter(torch.ones(emb_dim))
                 self.register_parameter('ia3_1', self.ia3_1)
@@ -90,23 +90,23 @@ class GINConv(MessagePassing):
     def update(self, aggr_out):
         x = aggr_out
         if self.w1:
-            h = self.delta_tune(self.mlp[0], self.ia3_1, self.lora_1, self.scale_1, x)
+            h = self.delta_tune(self.mlp[0], self.ia3_1, self.lora_1, x)
         else:
             h = self.mlp[0](x)
         a_h = self.mlp[1](h)
         if self.w2:
-            out = self.delta_tune(self.mlp[2], self.ia3_2, self.lora_2, self.scale_2, a_h)
+            out = self.delta_tune(self.mlp[2], self.ia3_2, self.lora_2, a_h)
         else:
             out = self.mlp[2](a_h)
         return out
 
-    def delta_tune(self, linear, ia3, lora, scale, x):
+    def delta_tune(self, linear, ia3, lora, x):
         m_x = x
         if ia3 is not None:
             m_x = x * ia3
         h = linear(m_x)
         if lora is not None:
-            h = h + scale * lora(x)
+            h = h + lora(x)
         return h
 
 
@@ -360,7 +360,7 @@ class GNN_graphpred_lora(torch.nn.Module):
     JK-net: https://arxiv.org/abs/1806.03536
     """
 
-    def __init__(self, num_layer, emb_dim, num_task=2, JK="last", drop_ratio=0, graph_pooling="mean", gnn_type="gin"):
+    def __init__(self, args, num_layer, emb_dim, num_task=2, JK="last", drop_ratio=0, graph_pooling="mean", gnn_type="gin"):
         super(GNN_graphpred_lora, self).__init__()
         self.num_layer = num_layer
         self.drop_ratio = drop_ratio

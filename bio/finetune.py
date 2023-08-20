@@ -14,6 +14,7 @@ import numpy as np
 
 from model import GNN_graphpred
 from model_gp import GNN_graphpred_gp
+from model_lora import GNN_graphpred_lora
 from sklearn.metrics import roc_auc_score
 
 import pandas as pd
@@ -102,6 +103,7 @@ def main(runseed):
     parser.add_argument('--log', type=str)
     
     args = parser.parse_args()
+    print(args.model_file)
 
     logging.basicConfig(format='%(message)s',level=logging.INFO,filename='log/{}.log'.format(args.log),filemode='a')
 
@@ -169,6 +171,19 @@ def main(runseed):
                 model_param_group.append({"params": p})
         model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
 
+    if type(model) is GNN_graphpred_lora:
+        model_param_group = []
+        for name, p in model.gnn.gnns.named_parameters():
+            if 'lora' in name or 'scale' in name or 'ia3' in name:
+                model_param_group.append({"params": p})
+        for name, p in model.gnn.named_parameters():
+            if name.startswith('batch_norms'):
+                model_param_group.append({"params": p})
+            if 'mlp' in name and name.endswith('bias'):
+                model_param_group.append({"params": p})
+        model_param_group.append({"params": model.graph_pred_linear.parameters(), "lr": args.lr})
+        args.lr *= 5
+
     #set up optimizer
     optimizer = optim.Adam(model_param_group, lr=args.lr, weight_decay=args.decay)
 
@@ -210,7 +225,7 @@ def main(runseed):
 if __name__ == "__main__":
     
     total_acc = []
-    repeat = 10
+    repeat = 3
     for runseed in range(repeat):
         acc = main(runseed)
         total_acc.append(acc)

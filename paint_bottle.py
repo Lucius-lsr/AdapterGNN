@@ -21,7 +21,7 @@ title = 'abl_3'
 plt.rc('font', family="Times New Roman")
 matplotlib.rcParams['pdf.fonttype'] = 42
 matplotlib.rcParams['ps.fonttype'] = 42
-plt.figure(figsize=(12, 6))
+plt.figure(figsize=(12, 4))
 
 plt.ylim(ymax=y_range[1], ymin=y_range[0])
 
@@ -47,4 +47,4 @@ plt.yticks(fontsize=fontsize)
 
 plt.tight_layout()
 # plt.show()
-plt.savefig('/Users/lishengrui/Desktop/工作/研究/AdapterGNN/{}.pdf'.format(title), format='pdf', dpi=300, pad_inches=0)
+plt.savefig('/Users/lishengrui/Desktop/工作/研究/AdapterGNN/AAAI 2024/{}.pdf'.format(title), format='pdf', dpi=300, pad_inches=0)

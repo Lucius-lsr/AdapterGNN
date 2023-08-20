@@ -1,0 +1,7 @@
+python finetune.py --log 0815_adapter_nopretrain --device 0
+python finetune.py --model_file model_gin/masking.pth --log 0815_adapter_masking --device 1
+python finetune.py --model_file model_gin/edgepred.pth --log 0815_adapter_edge --device 2
+python finetune.py --model_file model_gin/contextpred.pth --log 0815_adapter_context --device 3
+python finetune.py --model_file model_gin/graphcl_80.pth --log 0815_adapter_graphcl --device 4
+python finetune.py --model_file model_gin/infomax.pth --log 0815_adapter_infomax --device 5
+python finetune.py --model_file model_gin/simgrace_80.pth --log 0815_adapter_simgrace --device 6

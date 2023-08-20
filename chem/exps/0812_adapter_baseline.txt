@@ -1,0 +1,4 @@
+python finetune_multask.py --input_model_file model_gin/masking.pth --log 0812_adapter_masking --device 1
+python finetune_multask.py --input_model_file model_gin/edgepred.pth --log 0812_adapter_edge --device 2
+python finetune_multask.py --input_model_file model_gin/contextpred.pth --log 0812_adapter_context --device 3
+python finetune_multask.py --input_model_file models_graphcl/graphcl_80.pth --log 0812_adapter_graphcl --device 4

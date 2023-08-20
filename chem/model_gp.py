@@ -392,8 +392,8 @@ class GNN_gp_311(torch.nn.Module):
             elif gnn_type == "graphsage":
                 self.gnns.append(GraphSAGEConv(emb_dim))
 
-        bottleneck_dim = 15
-        prompt_num = 2
+        bottleneck_dim = 30
+        prompt_num = 1
 
         if args.scale == -1:
             gating = 0.01
@@ -442,13 +442,26 @@ class GNN_gp_311(torch.nn.Module):
             h = h_list[layer]
 
             h_mlp, x_aggr = self.gnns[layer](h, edge_index, edge_attr)
+            #
+            # # delta = self.prompts[0][layer](x_aggr)  # par
+            # # delta = self.prompts[0][layer](h_mlp)  # seq
+            # # h_mlp = h_mlp + delta
+            #
+            # delta = self.prompts[0][layer](h_list[layer])
+            # h_mlp = h_mlp + delta * self.gating[0][layer]
+            # delta = self.prompts[1][layer](x_aggr)
+            # h_mlp = h_mlp + delta * self.gating[1][layer]
+
+            h_mlp = h_mlp + self.prompts[0][layer](h_mlp)  # seq
+            # h_mlp = h_mlp + self.prompts[0][layer](x_aggr)  # par
 
             h = self.batch_norms[layer](h_mlp)
 
-            delta = self.prompts[0][layer](h_list[layer])
-            h = h + delta * self.gating[0][layer]
-            delta = self.prompts[1][layer](x_aggr)
-            h = h + delta * self.gating[1][layer]
+            # delta = self.prompts[0][layer](h_list[layer])
+            # h = h + delta * self.gating[0][layer]
+            # delta = self.prompts[1][layer](x_aggr)
+            # h = h + delta * self.gating[1][layer]
+
 
             if layer < self.num_layer - 1:
                 h = F.relu(h)
