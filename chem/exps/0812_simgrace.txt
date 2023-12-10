@@ -1,2 +1,0 @@
-python finetune_multask.py --input_model_file models_simgrace/simgrace_80.pth --log 0812_adapter_simgrace --device 5
-python finetune_multask.py --input_model_file models_simgrace/simgrace_80.pth --log 0812_lora_simgrace --device 6

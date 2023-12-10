@@ -1,2 +1,0 @@
-python finetune.py --model_file model_gin/contextpred.pth --log 0815_adaptergnn_nobn_context --device 2
-python finetune.py --model_file model_gin/masking.pth --log 0815_adaptergnn_nobn_masking --device 3

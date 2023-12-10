@@ -1,4 +1,4 @@
-name: molcpt
+name: adaptergnn
 channels:
   - pyg
   - conda-forge
