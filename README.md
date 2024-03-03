@@ -44,7 +44,7 @@ And put these pre-trained checkpoints in bio/model_gin and chem/model_gin.
 ## Reproducing results in the paper
 Our results in the paper can be reproduced by:
 
-- `cd bio`
+- `cd chem`
   
 - `sh reproduce.sh`
 
