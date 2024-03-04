@@ -13,10 +13,19 @@ torch-spline-conv     1.2.1
 rdkit                 2020.09.1
 ```
 
-You can use conda to install pytorch first and then use `environment.yml` to automatically install the required packages:
+For CUDA 11.\*, use the following command to install torch:
 ```
-conda env create -f environment.yml
+conda install pytorch==1.10.1 torchvision==0.11.2 torchaudio==0.10.1 cudatoolkit=11.3 -c pytorch -c conda-forge
 ```
+For other version of CUDA, find the way in [pytorch.org](https://pytorch.org/get-started/previous-versions/)
+
+Then specify the required versions for `torch-cluster` `torch-geometric` `torch-scatter` `torch-sparse` `torch-spline-conv` with
+
+```
+pip install XXX==*.*.*
+```
+
+For `rdkit`, the oldest available version is 2022.3.3, which is also compatible.
 
 ## Dataset download
 All the necessary data files can be downloaded from the following links.
