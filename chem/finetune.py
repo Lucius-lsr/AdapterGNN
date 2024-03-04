@@ -13,6 +13,7 @@ from splitters import scaffold_split, scaffold_split_multask
 import pandas as pd
 import logging
 import warnings
+from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
 
@@ -196,7 +197,7 @@ def main(runseed, dataset):
     best_val_acc = -1
     assoc_test_acc = -1
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in tqdm(range(1, args.epochs + 1)):
         train(args, model, device, train_loader, optimizer)
         if args.eval_train:
             train_acc = eval(args, model, device, train_loader)
