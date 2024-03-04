@@ -12,6 +12,7 @@ from sklearn.metrics import roc_auc_score
 import os
 import logging
 import statistics
+from tqdm import tqdm
 
 criterion = nn.BCEWithLogitsLoss()
 
@@ -177,7 +178,7 @@ def main(runseed):
             print("removed existing file!!")
             os.remove(args.filename)
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in tqdm(range(1, args.epochs + 1)):
         print("====epoch " + str(epoch))
 
         train(args, model, device, train_loader, optimizer)
